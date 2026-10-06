@@ -63,6 +63,16 @@ def resolve_audio(f):
 COLOR_RE = re.compile(r"\\c\[(\d+),(\d+),(\d+)\]")
 DEFAULT_COLOR = (242, 255, 255)
 
+def soften_for_light_bg(r, g, b):
+    """游戏原色是为深色背景设计的(如纯黄)。
+    适配浅色阅读底：保留色相，压低亮度/饱和度，保证可读。"""
+    import colorsys
+    h, l, s = colorsys.rgb_to_hls(r / 255, g / 255, b / 255)
+    l = min(l, 0.34)
+    s = min(s, 0.80)
+    r2, g2, b2 = colorsys.hls_to_rgb(h, l, s)
+    return "#%02x%02x%02x" % (round(r2 * 255), round(g2 * 255), round(b2 * 255))
+
 def fmt_text(s):
     """橙光标记 -> HTML"""
     if not s:
@@ -79,7 +89,7 @@ def fmt_text(s):
                 out.append("</span>")
                 open_spans -= 1
         else:
-            out.append('<span style="color:rgb(%d,%d,%d)">' % rgb)
+            out.append('<span style="color:%s">' % soften_for_light_bg(*rgb))
             open_spans += 1
         pos = m.end()
     out.append(_plain(s[pos:]))
@@ -110,6 +120,36 @@ def load_raw_cond():
     return table
 
 RAW_COND = load_raw_cond()
+
+def load_raw_jump2():
+    """raw code 206 有两种格式:
+       3 参数 {0:变量,1:值,2:'NNN:名'} = 条件跳转; 2 参数 {0:剧情号,1:'NNN:名'} = 无条件跳转。
+       game.json 解析时只处理了 3 参数格式, 2 参数格式的 target 丢失, 这里按 (story, index) 补回。"""
+    raw = json.load(open(GAME_RAW, encoding="utf-8"))
+    table = {}
+    for sid, s in raw["stories"].items():
+        for k, e in s["_events"].items():
+            if e["Code"] == 206 and "2" not in e["Argv"]:
+                table[(int(sid), int(k))] = e["Argv"].get("1", "")
+    return table
+
+JUMP2 = load_raw_jump2()
+
+def load_pic_slots():
+    """raw code 400(显示图片)/402(移动图片) 的 argv[0] 是槽位号。
+    game.json 丢失了该信息, 按 (story, index) 补回, 用于速览版把立绘合成进背景场景。"""
+    raw = json.load(open(GAME_RAW, encoding="utf-8"))
+    table = {}
+    for sid, s in raw["stories"].items():
+        for k, e in s["_events"].items():
+            if e["Code"] in (400, 402):
+                table[(int(sid), int(k))] = e["Argv"].get("0", "")
+    return table
+
+PIC_SLOT = load_pic_slots()
+
+# 工具剧情(系统函数/黑屏渐入渐出/慢入慢出/一声枪响)，不作为分支图节点与跳转目标
+UTILITY = {3, 4, 5, 6, 47, 48, 51}
 
 def cond_text(story_id, e):
     c = e.get("cond", "")
@@ -164,14 +204,17 @@ def parse_range(events, lo, hi, sid, stats):
             img, name = resolve_img(e.get("img"))
             if name:
                 kind = "bg" if "background" in (e.get("img") or "").lower() or (img and "/background/" in img) else "pic"
-                items.append({"t": kind, "img": img, "name": name})
+                items.append({"t": kind, "img": img, "name": name, "slot": PIC_SLOT.get((sid, e["i"]), "")})
+        elif t == "hide_pic":
+            items.append({"t": "hide", "slot": e.get("index", "")})
         elif t == "bgm":
             f, name = resolve_audio(e.get("file"))
             items.append({"t": "bgm", "f": f, "name": name})
         elif t == "bgm_fadeout":
             items.append({"t": "bgmstop"})
         elif t == "jump":
-            to, to_name = parse_jump_target(e.get("target"))
+            target = e.get("target") or JUMP2.get((sid, e["i"]), "")
+            to, to_name = parse_jump_target(target)
             items.append({"t": "jump", "to": to, "name": to_name, "id": "j%d-%d" % (sid, e["i"])})
         elif t == "game_over":
             items.append({"t": "end", "id": "e%d-%d" % (sid, e["i"])})
@@ -201,9 +244,11 @@ def clean_choice_text(t):
     return t.strip()
 
 def find_first_jump(items):
-    """在选项块里找第一个 jump，返回 (story_id 或 None, 名字)"""
+    """在选项块里找第一个有效 jump(跳过工具剧情目标)，返回 (story_id 或 None, 名字)"""
     for it in items:
         if it["t"] == "jump":
+            if it.get("to") in UTILITY:
+                continue
             return it["to"], it.get("name", "")
         if it["t"] == "choice":
             for o in it["opts"]:
@@ -219,7 +264,6 @@ def main():
     edges = []
     nodes = []
 
-    UTILITY = {3, 4, 5, 6, 47, 48, 51}  # 系统函数/黑屏渐入渐出/慢入慢出/一声枪响
     for s in data["stories"]:
         sid = s["id"]
         stats = {"choices": 0, "endings": 0}
@@ -259,11 +303,11 @@ def main():
     print("OK: site/plot/js/data.js  stories=%d nodes=%d edges=%d" % (len(stories_out), len(nodes), len(edges)))
 
 def collect_edges(it, sid, edges):
-    if it["t"] == "jump" and it.get("to"):
+    if it["t"] == "jump" and it.get("to") and it["to"] not in UTILITY:
         edges.append({"f": sid, "t": it["to"], "i": it.get("id", ""), "l": ""})
     elif it["t"] == "choice":
         for o in it["opts"]:
-            if o.get("to"):
+            if o.get("to") and o["to"] not in UTILITY:
                 edges.append({"f": sid, "t": o["to"], "i": o["id"], "l": o["txt"][:20]})
             else:
                 collect_edges_all(o["items"], sid, edges)

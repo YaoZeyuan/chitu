@@ -79,6 +79,29 @@ main.viewer { max-width: 860px; margin: 0 auto; padding: 16px 20px 80px; }
   background: repeating-linear-gradient(45deg, #e6e0d2, #e6e0d2 10px, #ddd6c6 10px, #ddd6c6 20px);
   border: 1px dashed var(--line); border-radius: 6px;
 }
+
+/* 背景场景：背景 + 立绘按原始 960x540 画布对位合成 */
+.scene {
+  position: relative; aspect-ratio: 16 / 9;
+  border-radius: 10px; overflow: hidden; margin: 26px 0 18px;
+  background-size: 100% 100%; background-position: center;
+  border: 1px solid var(--line);
+  box-shadow: 0 4px 14px rgba(50, 40, 20, .14);
+}
+.scene .sprites { position: absolute; inset: 0; pointer-events: none; }
+.scene .sprite {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  display: block;
+}
+.scene .sprite.overlay { object-fit: contain; }  /* 章节标题卡居中显示 */
+.scene .bg-name {
+  position: absolute; left: 10px; bottom: 8px; z-index: 2;
+  font-size: 12px; color: #fff; background: rgba(0, 0, 0, .45);
+  padding: 2px 10px; border-radius: 10px;
+}
+.scene.noimg {
+  background: repeating-linear-gradient(45deg, #d8d2c4, #d8d2c4 12px, #cfc8b8 12px, #cfc8b8 24px);
+}
 .txt-narr { font-size: 16.5px; margin: 12px 0; text-shadow: 0 0 1px rgba(255,255,255,.4); }
 .txt-dlg { margin: 14px 0; padding-left: 12px; border-left: 3px solid var(--accent-soft); }
 .txt-dlg .spk { color: var(--accent); font-weight: 700; margin-right: 6px; }
