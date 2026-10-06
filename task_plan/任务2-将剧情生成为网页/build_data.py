@@ -136,14 +136,32 @@ def load_raw_jump2():
 JUMP2 = load_raw_jump2()
 
 def load_pic_slots():
-    """raw code 400(显示图片)/402(移动图片) 的 argv[0] 是槽位号。
-    game.json 丢失了该信息, 按 (story, index) 补回, 用于速览版把立绘合成进背景场景。"""
+    """raw code 400(显示图片) 携带槽位与站位参数。
+    argv[9] 格式: '槽位,?,x,y,宽%,高%,alpha' (如 '6 , ,-120 ,135 ,80% ,80% ,255')。
+    game.json 丢失了这些信息, 按 (story, index) 补回, 用于速览版把立绘按原始站位合成进背景场景。"""
     raw = json.load(open(GAME_RAW, encoding="utf-8"))
     table = {}
     for sid, s in raw["stories"].items():
         for k, e in s["_events"].items():
-            if e["Code"] in (400, 402):
-                table[(int(sid), int(k))] = e["Argv"].get("0", "")
+            if e["Code"] != 400:
+                continue
+            a = e["Argv"]
+            p9 = (a.get("9") or "").split(",")
+            try:
+                pos = {
+                    "slot": a.get("0", ""),
+                    "x": float(p9[2]) if len(p9) > 2 and p9[2].strip() else 0.0,
+                    "y": float(p9[3]) if len(p9) > 3 and p9[3].strip() else 0.0,
+                    "w": float(p9[4].replace("%", "")) if len(p9) > 4 and p9[4].strip() else 100.0,
+                    "h": float(p9[5].replace("%", "")) if len(p9) > 5 and p9[5].strip() else 100.0,
+                }
+            except ValueError:
+                pos = {"slot": a.get("0", ""), "x": 0.0, "y": 0.0, "w": 100.0, "h": 100.0}
+            if not pos["w"] or pos["w"] <= 0:
+                pos["w"] = 100.0
+            if not pos["h"] or pos["h"] <= 0:
+                pos["h"] = 100.0
+            table[(int(sid), int(k))] = pos
     return table
 
 PIC_SLOT = load_pic_slots()
@@ -204,7 +222,10 @@ def parse_range(events, lo, hi, sid, stats):
             img, name = resolve_img(e.get("img"))
             if name:
                 kind = "bg" if "background" in (e.get("img") or "").lower() or (img and "/background/" in img) else "pic"
-                items.append({"t": kind, "img": img, "name": name, "slot": PIC_SLOT.get((sid, e["i"]), "")})
+                it2 = {"t": kind, "img": img, "name": name}
+                if kind == "pic":
+                    it2.update(PIC_SLOT.get((sid, e["i"]), {"slot": "", "x": 0.0, "y": 0.0, "w": 100.0, "h": 100.0}))
+                items.append(it2)
         elif t == "hide_pic":
             items.append({"t": "hide", "slot": e.get("index", "")})
         elif t == "bgm":

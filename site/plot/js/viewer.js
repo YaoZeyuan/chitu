@@ -59,6 +59,7 @@
   }
 
   var CHAPTER_CARD_RE = /^(序章|尾声|终章|第.+[章话])(\.[a-zA-Z]+)?$/;
+  var CANVAS_W = 960, CANVAS_H = 540;
 
   function addSprite(scene, it) {
     var row = scene.querySelector(".sprites");
@@ -77,6 +78,16 @@
       img = el("span", "sprite pic-missing", "[缺图] " + esc(it.name));
     }
     if (it.slot) img.dataset.slot = it.slot;
+    // 站位: 游戏画布 960x540, x/y 为像素偏移, w/h 为缩放百分比; 转成场景百分比保证响应式对位
+    var wx = Number(it.w), hx = Number(it.h), xx = Number(it.x) || 0, yy = Number(it.y) || 0;
+    var isFull = (wx >= 100 && hx >= 100 && !xx && !yy) || isNaN(wx) || isNaN(hx);
+    if (!isFull) {
+      img.style.left = "calc(50% + " + (xx / CANVAS_W * 100).toFixed(2) + "%)";
+      img.style.top = "calc(50% + " + (yy / CANVAS_H * 100).toFixed(2) + "%)";
+      img.style.width = wx.toFixed(2) + "%";
+      img.style.height = hx.toFixed(2) + "%";
+      img.style.transform = "translate(-50%,-50%)";
+    }
     row.appendChild(img);
   }
 
@@ -105,10 +116,7 @@
           break;
         }
         case "hide": {
-          if (ctx.scene && it.slot) {
-            var old = ctx.scene.querySelector('.sprite[data-slot="' + it.slot + '"]');
-            if (old) old.remove();
-          }
+          // 阅读视图: hide 不改变画面(场景保留出场角色合影), 同槽位换人由 show 替换
           break;
         }
         case "text": {

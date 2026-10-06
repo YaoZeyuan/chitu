@@ -1,297 +1,163 @@
-
 <!DOCTYPE html>
-<html>
+<html lang="zh-CN">
 
 <head>
-    <meta charset='utf-8'/>
-    <title>潜伏之赤途</title>
-    <meta name='viewport'
-          content='width=device-width,initial-scale=1.0,minimum-scale=1.0,maximum-scale=1.0,user-scalable=no'
-    />
-    <meta name='apple-mobile-web-app-capable' content='yes'/>
-    <meta name='full-screen' content='true'/>
-    <meta name='screen-orientation' content='portrait'/>
-    <meta name='x5-fullscreen' content='true'/>
-    <meta name='360-fullscreen' content='true'/>
-    <meta http-equiv='expires' content='0'/>
-	    <!-- 360浏览器默认开启极速模式 -->
-    <meta name=”renderer” content=”webkit”>
-    <!-- 如果安装了GCF，则使用GCF来渲染页面，如果没有安装GCF，则使用最高版本的IE内核进行渲染 -->
-    <meta http-equiv=”X-UA-Compatible” content=”IE=Edge,chrome=1″ >
-	    <!-- UC默认竖屏 ，UC强制全屏 -->
-    <meta name="browsermode" content="application"/>
-    <!-- QQ强制全屏 -->
-    <meta name="x5-page-mode" content="app"/> 
-	
-    <link type="text/css" rel="stylesheet" href="css/public.css"/>  
-	<!--<script type="text/javascript" src="js/eruda.min.js "></script>-->
-    <script type="text/javascript">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>潜伏之赤途</title>
+  <style>
+    :root {
+      --bg: #f5f2ec;
+      --panel: #fffdf8;
+      --ink: #2c2a26;
+      --muted: #8a8478;
+      --line: #e3ddd0;
+      --accent: #a4322a;
+      --blue: #2b5d8a;
+    }
 
-        var debug = false;
-        var log = console.log;
-        console.log = function(){
-            if(debug){
-                log(arguments);
-            }
-        }
-        //截取?Path
-        function GetQueryString(name) {
-            var reg = new RegExp("(^|&)" + name + "=([^&]*)(&|$)", "i");
-            var r = window.location.search.substr(1).match(reg);
-            if (r != null) return (r[2]);
-            return null;
-        }
-        var base64Canvas;
-        function GetImageBase64(src,w,h,callback) {
-            var base64Image = document.createElement('img'); 
-            base64Image.setAttribute('crossOrigin', 'anonymous');
-            base64Image.src = src; 
-            base64Image.onload =function() { 
-                base64Image.width=w;
-                base64Image.height=h;
-                var data = getBase64(base64Image); 
-				callback(data);
-				base64Image=null;
-            } 
-        }
-        function getBase64(img) {
-            var dataURL="";
-            try {
-                if(!base64Canvas){
-                    base64Canvas = document.createElement("canvas");
-                }
-                base64Canvas.width = img.width;
-                base64Canvas.height = img.height;
-                var ctx = base64Canvas.getContext("2d");
-                ctx.drawImage(img, 0, 0, img.width, img.height);
-                dataURL = base64Canvas.toDataURL("image/png");
-            } catch (error) {
-                console.log(error);
-            }
-            return dataURL // return dataURL.replace("data:image/png;base64,", ""); 
-        }
-        window["GetImageBase64"]= GetImageBase64;          
-		//eruda.init();
-        var pmode = "0";
-        var webUrl = '//www.66rpg.com';  //=> '//www.66rpg.com',
-        var passUrl = "//passport.66rpg.com"; //=> '//passport.66rpg.com'
-        var cgUrl = "//cg.66rpg.com";  // => 'cg.66rpg.com'
-        var bbsUrl = "//bbs.66rpg.com";  //=> 'bbs.66rpg.com'
-        var picUrl = "//pic.cgyouxi.com"; //=> '//pic.cgyouxi.com'
-        var cdnUrl = "//c2.cgyouxi.com"; //=> '//c2.cgyouxi.com'
-        var wsUrl = "ws://bd.66rpg.com:6970";  // => 'http -> ws://bd.66rpg.com:6970 'https -> wss://bd.66rpg.com:6971'暂未确定
-        var mUrl = "//m.66rpg.com";   //=> '//m.66rpg.com'
-        var cUrl = "//c.66rpg.com"; //=> '//c.66rpg.com',       //上报地址路径
-        //	hfplayer资源
-        var hfJsUrl = "//c2.cgyouxi.com/website/hfplayer/js";//=> STATIC_PATH . 'hfplayer/js',    // h5专用JS资源
-        var hfCssUrl = "//c2.cgyouxi.com/website/hfplayer/css";    // => STATIC_PATH . 'hfplayer/css',   // h5专用CSS资源
-        var hfIMGUrl = "//c2.cgyouxi.com/website/hfplayer/img";     //=> STATIC_PATH . 'hfplayer/img',   // h5专用IMG资源
-        var hfSWFUrl = "__HFSWF__";     //=> STATIC_PATH . 'hfplayer/swf',   // h5专用的SWF
-		var reportUrl = "//report.66rpg.com";
+    * { box-sizing: border-box; }
 
-        var channel_id = GetQueryString("channel_id")||"";//平台判断
-        var guid = "e8f4a6face3bcd1ff274ae99126e64d8";
-        var ver = '10';
-        var flower_unlock = "0";
-        var gamefv_times = "10404"; //收藏数目
-        var platMark = 'isFlash';
-        var aspect_ratio = '1'; //屏幕比例；
-        var quality = '32';
-		var isShowDebug = GetQueryString("debug");
-		
-		if(isShowDebug == true || isShowDebug == "true" || window.location.href.indexOf("debug-")>-1){
-			var src = 'js/eruda.min.js ';
-            document.write('<scr' + 'ipt src="' + src + '"></scr' + 'ipt>');
-            document.write('<scr' + 'ipt>eruda.init();</scr' + 'ipt>');
-		}
-    </script>
-    <script type="text/javascript" src="js/jquery-2.1.4.min.js "></script>
-    <script type="text/javascript" src="js/md5.js "></script>
-    <script type="text/javascript" src="js/base64-binary.js "></script>
-    <script type="text/javascript" src="js/base91.js "></script>
-    <script type="text/javascript" src="js/base64-binary.js "></script>
-    <script type="text/javascript" src="js/base64.js "></script>
-    <script type="text/javascript" src="js/CommonPlayer.js "></script>
-    <script type="text/javascript" src="js/Mark.js "></script>
-    <script type="text/javascript" src="js/GameConfig.js "></script>
-	<!-- <script type="text/javascript" src="https://res.wx.qq.com/open/js/jweixin-1.3.2.js"></script> -->
+    html, body { margin: 0; padding: 0; }
 
-    <!-- 登录相关js  初始化-->
-    <!-- <script type="text/javascript" src="js/Login.js "></script> -->
- 
-        <!--如果是web引用-->
-        <!--如果是H5引用-->    <!--统计-->
-    <script type="text/javascript" src="js/GameShare.js "></script>
-    <script type="text/javascript" src="js/GameMenu.js "></script>
-    <script type="text/javascript" src="js/SendFlower.js "></script>
-    <script type="text/javascript" src="js/GameGlobal.js "></script>
-    <script type="text/javascript" src="js/CountServer.js "></script>
+    body {
+      background: var(--bg);
+      color: var(--ink);
+      font-family: "Noto Serif SC", "Songti SC", "SimSun", serif;
+      line-height: 1.8;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 20px;
+    }
 
+    .head {
+      text-align: center;
+      margin-bottom: 36px;
+    }
+
+    .head h1 {
+      margin: 0;
+      font-size: 34px;
+      font-weight: 700;
+      letter-spacing: 8px;
+      color: var(--accent);
+    }
+
+    .head .sub {
+      margin-top: 10px;
+      font-size: 14px;
+      color: var(--muted);
+      letter-spacing: 2px;
+    }
+
+    .head .rule {
+      width: 72px;
+      height: 3px;
+      background: var(--accent);
+      margin: 18px auto 0;
+      border-radius: 2px;
+    }
+
+    nav {
+      width: 100%;
+      max-width: 480px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    nav a {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      padding: 16px 24px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      color: var(--ink);
+      text-decoration: none;
+      box-shadow: 0 1px 6px rgba(60, 50, 30, .06);
+      transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+    }
+
+    nav a:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 14px rgba(60, 50, 30, .12);
+      border-color: var(--accent);
+      text-decoration: none;
+    }
+
+    nav a .name {
+      font-size: 19px;
+      font-weight: 700;
+      letter-spacing: 2px;
+    }
+
+    nav a .desc {
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    nav a.primary {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: #fff;
+    }
+
+    nav a.primary .name { color: #fff; }
+    nav a.primary .desc { color: rgba(255, 255, 255, .82); }
+
+    nav a .arrow {
+      margin-left: auto;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    nav a.primary .arrow { color: rgba(255, 255, 255, .8); }
+
+    footer {
+      margin-top: 40px;
+      font-size: 12px;
+      color: var(--muted);
+      letter-spacing: 1px;
+    }
+  </style>
 </head>
 
-<body style="background-color: black;">
-<div id="EngineVer" style="background-color: black;color: white;position: absolute;z-index: 100;right: 0;bottom: 0">
-</div>
-<video id="videos" class="video-js" preload="auto" style="display: none; width: 1px;height: 1px"></video>
-<div id="videomask"
-     style="position:absolute;left:0;right:0;top:0;bottom: 0;  background-color: #000000; display:none; width: 100%;height:100%;text-align: center">
-    <div id="videoText" name="text"
-         style="position:absolute;z-index:999999;text-align:left;vertical-align:middle;display:table-cell;"></div>
-    <img id="videomaskBG" name="loadImg" style="position:absolute;left:0;right:0;top:0;bottom: 0;z-index:999;"
-         >
-    <img id="loadingVideo" style="position:absolute;bottom:0;right:0;" src="">
-</div>
-<!--用户信息着陆点-->
-<div id="data"></div>
-    <button class="ssologin" style="display:none"></button>
-    <button class="logout" style="display:none"></button><!-- SSO模态框 BEGIN -->
-<div id="sso_login_modal" class="modal"  aria-hidden="false" style="display:none;box-shadow:0 0 30px 0 rgba(0,0,0,.2);background-color:#FFF;border-radius:6px;margin-left: -162.5px;width:325px;overflow:hidden;height:300px;top:50%;margin-top:-180px;">
-  <iframe id="js-cross-login-iframe" frameborder="no" border="0" marginwidth="0" marginheight="0" scrolling="no" allowtransparency="yes" width="329" height="303" data-src="//www.66rpg.com/sso/minilogin?curUrl=http%3A%2F%2Fwww.66rpg.com%2Fh5%2F699726%3Fquality%3D32%26mark%3DisFlash%26ohp%3Dv2" src="">
-  </iframe>
-</div>
-<!-- 未登录时候才进行后台检测 -->
+<body>
+  <header class="head">
+    <h1>潜伏之赤途</h1>
+    <div class="sub">潜伏于无声处，行险于赤途中</div>
+    <div class="rule"></div>
+  </header>
 
-<iframe id="sso_cross_check_login_modal" style="display:none;" frameborder="no" border="0" marginwidth="0" marginheight="0" scrolling="yes" allowtransparency="yes" width="2" height="2" src="">
-</iframe>
-<!--登录相关end-->
-<script type="text/javascript" src="js/OVideo.js"></script>
-<script type="text/javascript" src="js/OAudio.js"></script>
-<script type="text/javascript" src="js/laya.core.min.js "></script>
-<script type="text/javascript" src="js/laya.webgl.min.js "></script>
-<script type="text/javascript" src="js/laya.filter.min.js "></script>
-<script type="text/javascript" src="js/laya.ui.min.js "></script>
-<script type="text/javascript" src="js/laya.html.min.js "></script>
-<script type="text/javascript" src="js/LibClass.js "></script>
-<script type="text/javascript" src="js/pc-common.js "></script>
-<!--用户自定义顺序文件添加到这里-->
-<!--jsfile--Custom-->
-<!--<script type="text/javascript" src="libs/Org_start_view.js"></script>-->
-<!--jsfile--Custom-->
+  <nav>
+    <a class="primary" href="game.html">
+      <span class="name">开始游戏</span>
+      <span class="desc">原版游戏 · 可存档可选项</span>
+      <span class="arrow">→</span>
+    </a>
+    <a href="plot/index.html">
+      <span class="name">剧情脚本</span>
+      <span class="desc">章节速览 · 场景立绘 · 分支平铺</span>
+      <span class="arrow">→</span>
+    </a>
+    <a href="plot/branch.html">
+      <span class="name">分支概览</span>
+      <span class="desc">全剧情分支图 · 点击节点看详情</span>
+      <span class="arrow">→</span>
+    </a>
+    <a href="https://github.com/YaoZeyuan/chitu" target="_blank" rel="noopener">
+      <span class="name">项目地址</span>
+      <span class="desc">GitHub · YaoZeyuan/chitu</span>
+      <span class="arrow">↗</span>
+    </a>
+  </nav>
 
-<!--自定义的js(src文件夹下)文件自动添加到下面jsfile模块标签里面里-->
-<!--删除标签，ide不会自动添加js文件，请谨慎操作-->
-<!--启动类添加到这里-->
-<script type="text/javascript" src="./main.min.js"></script>
-
-<script>
-	function goWXShare(sendJson, success, fail, complete) {
-		wx.miniProgram.navigateTo ({ 
-			url:'../shareModel/shareModel?path='+encodeURIComponent(JSON.stringify(sendJson)), //path后面的值是传递的数据。 
-			success: success,  
-			fail: fail,  
-			complete:complete  
-		});
-	}
-	function goWXMainPage() {
-		wx.miniProgram.reLaunch({url: "./../index/index"});
-	}
-    window["author_uname"] ='fantasia';
-        
-    window["check_level"] = '-1'
-    function start(gid, version, m, s, q, gamebinpath,game_screen, gindex, plat) {
-//        GloableData.getInstance().serverPath = ServerPath;
-        gamebinpath = ""
-        // GloableData.getInstance().serverPath = "//c2.cgyouxi.com/website/hfplayer/v2/bin/";
-        GloableData.getInstance().serverPath = "./";
-        try{
-            window["gameMain"].initGameData(gid, version, m, s, q, gamebinpath, game_screen, gindex, plat);
-            GloableData.getInstance().gameInfo.gIndex = '699726'
-        }catch (e){
-            // var plat = "";
-            // if(GloableData.getInstance().gameInfo.isPc){
-            //     plat = "PC";
-            // }else{
-            //     plat = OrgWeb.getInstance().getOrgPlat();
-            // }
-            // var DataTime = new Date().getTime() / 1000;
-            // var uploadData = {
-            //     sn: '9',
-            //     sv: '1',
-            //     ei: e.stack +"---->plat:"+plat,
-            //     rt: '1',
-            //     sign: DataTime
-            // };
-            // AjaxManager.getInstance().sendAjaxPost("//support.66rpg.com/report/bug",uploadData,null,null);
-			// GloableData.getInstance().reportorError.upError(e);
-        }
-
-    }
-    var isInit = false;
-    function initGame() {
-        if(isInit){
-            return;
-        }
-        if(!isInit){
-            isInit = true;
-        }
-        // //进入游戏就统计
-		// if (platMark.indexOf("wxorg")!==-1) {
-		// 	//WX game run time
-		// 	commonPlayer.countServer.getWXPlayTime();
-		// } else {
-		// 	//用户信息完善了--开始统计运行时间
-		// 	commonPlayer.countServer.gamePlayTime();
-		// }
-        //统计只需要发出请求，统计全端游戏的运行量
-        // commonPlayer.countServer.gameDuration();
-        //计时器开
-        // commonPlayer.countServer.setRunTime();
-        //暴露出来的click
-        window["gameMain"] = new Main();
-        start('e8f4a6face3bcd1ff274ae99126e64d8','10','isFlash','','32','','1');
-
-    }
-    
-    initGame();
-    // if(platMark.toLowerCase() == "wxmini"){
-    //     getWXminiGindex(function(isFrGame){
-    //         if(isFrGame){
-    //             initGame(); 
-    //         }else{
-    //             alert("当前不是免费游戏,请下载橙光APP,浏览更多精彩游戏")
-    //         }
-    //     })
-    // }else if (platMark.indexOf("wxorg")!==-1) {
-	// 	var uid = utils.GetQueryString("xcx_uid");
-	// 	var uName = utils.GetQueryString("username");
-	// 	if (uid) {
-	// 		commonPlayer.userInfos.uid = uid;
-	// 		if (uName) {
-	// 			commonPlayer.userInfos.uname = base64.decoder(uName);
-	// 		}
-    //         commonPlayer.loginStatus = true;
-	// 	}
-	// 	commonPlayer.goWXShare = goWXShare;
-	// 	commonPlayer.goWXMainPage = goWXMainPage;
-    //     initGame();
-	// }else if(platMark.indexOf("light")!==-1){
-    //     initGame();        
-    // }else{
-	// //todo 用户需要单独抽出
-    // 	if(mark.IOS){
-    // 		initGame();
-    // 	}
-    //     if (channel_id.length>0) {
-    //         window.parent.sdkLogin.init(function (data) {
-    //             if(parseInt(data.uid)>0){
-    //                 THRPLAN = data;
-    //                 commonPlayer.userInfos = data;
-    //                 commonPlayer.channel_id = data.channel_id;
-    //                 commonPlayer.platform = data.channel_type;
-    //                 commonPlayer.loginStatus = true;
-    //                 commonPlayer.countServer.getServerTime(function(){
-    //                     initGame();
-    //                 })
-    //             }
-    //         });
-    //     }
-    // }
-    function gameMainBlur(){
-        window["gameMain"].stageBlur()
-    }
-    function gameMainFocus(){
-        window["gameMain"].stageFocus();
-    }
-</script>
+  <footer>非官方复刻 · 仅供学习交流</footer>
 </body>
+
 </html>
