@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>潜伏之赤途 · 剧情分支图</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body class="branch">
+<header class="topbar">
+  <h1>潜伏之赤途 <small>剧情分支图</small></h1>
+  <select id="jump-toc" title="定位章节"></select>
+  <span class="spacer"></span>
+  <a class="btn" href="index.html">剧情速览</a>
+</header>
+<div class="branch-wrap">
+  <div class="graph-scroll" id="graph-scroll"></div>
+  <aside class="side-panel" id="panel">
+    <div class="panel-empty">点击图中任意章节节点<br>查看详情、跳转关系与局部图</div>
+  </aside>
+</div>
+<div class="graph-tools">
+  <button class="btn" id="zin" title="放大">＋</button>
+  <button class="btn" id="zout" title="缩小">－</button>
+  <button class="btn" id="zreset" title="重置">⟲</button>
+</div>
+
+<script src="js/data.js"></script>
+<script src="js/branch.js"></script>
+</body>
+</html>
