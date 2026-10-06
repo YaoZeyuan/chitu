@@ -135,6 +135,35 @@ def load_raw_jump2():
 
 JUMP2 = load_raw_jump2()
 
+def load_raw_choice_prompts():
+    """raw code 101 = 选项UI指令, argv 数字键按序排列即全部选项文本。
+    game.json 把它误解析成了一个 dialogue 事件 (speaker=选项0, text=选项1, 其余选项丢失),
+    紧跟其后的 choice 事件其实是各选项的标签 (raw code 108)。
+    这里按 (story, index) 补回完整选项列表, 用于: ①跳过误标的 dialogue ②校验选项组完整性。"""
+    raw = json.load(open(GAME_RAW, encoding="utf-8"))
+    table = {}
+    for sid, s in raw["stories"].items():
+        for k, e in s["_events"].items():
+            if e["Code"] == 101:
+                a = e["Argv"]
+                table[(int(sid), int(k))] = [a[key] for key in sorted(a, key=lambda x: int(x))]
+    return table
+
+PROMPTS = load_raw_choice_prompts()
+
+def load_raw_merge_marks():
+    """raw code 102 = 选项组汇合标记 (每组恰好一个, 紧跟最后选项块之后)。
+    game.json 把它整个丢掉了, 按 (story, index) 记回, 用于精确界定最后选项块的结束位置。"""
+    raw = json.load(open(GAME_RAW, encoding="utf-8"))
+    table = {}
+    for sid, s in raw["stories"].items():
+        idxs = sorted(int(k) for k, e in s["_events"].items() if e["Code"] == 102)
+        if idxs:
+            table[int(sid)] = idxs
+    return table
+
+MERGES = load_raw_merge_marks()
+
 def load_pic_slots():
     """raw code 400(显示图片) 携带槽位与站位参数。
     argv[9] 格式: '槽位,?,x,y,宽%,高%,alpha' (如 '6 , ,-120 ,135 ,80% ,80% ,255')。
@@ -184,39 +213,115 @@ def parse_jump_target(t):
         return None, t or ""
     return int(m.group(1)), m.group(2)
 
+def _merge_in_gap(sid, lo_idx, hi_idx):
+    """raw 索引区间 (lo_idx, hi_idx] 内是否存在 102 汇合标记"""
+    for r in MERGES.get(sid, ()):
+        if r > hi_idx:
+            break
+        if r > lo_idx:
+            return True
+    return False
+
+def _group_extent(events, p, hi, sid):
+    """prompt 位于 p 的选项组整体跨度, 返回组末尾(102 汇合标记)之后的下标"""
+    n = len(PROMPTS[(sid, events[p]["i"])])
+    i = p + 1
+    while i < hi and events[i]["type"] == "note":
+        i += 1
+    for k in range(n):
+        if k < n - 1:
+            i = _scan_block_end(events, i + 1, hi, sid)
+        else:
+            i = _scan_last_end(events, i + 1, hi, sid)
+    return i
+
+def _scan_block_end(events, start, hi, sid):
+    """非最后选项块的结束位置 = 下一个同级标签所在下标 (嵌套选项组整组跳过)"""
+    j = start
+    while j < hi:
+        t = events[j]["type"]
+        if t == "dialogue" and (sid, events[j]["i"]) in PROMPTS:
+            j = _group_extent(events, j, hi, sid)
+            continue
+        if t == "choice":
+            return j
+        j += 1
+    return hi
+
+def _scan_last_end(events, start, hi, sid):
+    """最后选项块的结束位置 = 102 汇合标记处。
+    game.json 无 102 事件, 通过相邻事件的 raw 索引间隙判断; 嵌套选项组整组跳过。"""
+    j = start
+    prev_raw = events[start - 1]["i"] if start > 0 else -1
+    while j < hi:
+        e = events[j]
+        if _merge_in_gap(sid, prev_raw, e["i"]):
+            return j
+        t = e["type"]
+        if t == "dialogue" and (sid, e["i"]) in PROMPTS:
+            j = _group_extent(events, j, hi, sid)
+            prev_raw = events[j - 1]["i"] if j > 0 else -1
+            continue
+        if t == "choice":
+            return j  # 防御: 无 prompt 的标签, 视作边界
+        prev_raw = e["i"]
+        j += 1
+    return hi
+
 def parse_range(events, lo, hi, sid, stats):
-    """把 [lo,hi) 事件区间线性化为 item 列表。choice 块递归。"""
+    """把 [lo,hi) 事件区间线性化为 item 列表。
+
+    选项组语义(递归下降, 由 raw 结构精确驱动):
+    - raw 101(选项UI) 在 game.json 中被误标为 dialogue, 此处跳过并以 choice 节点替代;
+    - 其后有恰好 N=len(选项) 个 choice 标签(108), 依次为各选项;
+    - 每个选项块延伸到下一个同级标签; 最后一个选项块延伸到 102 汇合标记;
+    - 选项块内可嵌套更深的选项组, 按脚本顺序线性渲染。"""
     items = []
     i = lo
     while i < hi:
         e = events[i]
         t = e["type"]
-        if t == "choice":
+        if t == "dialogue" and (sid, e["i"]) in PROMPTS:
+            n = len(PROMPTS[(sid, e["i"])])
+            i += 1
+            while i < hi and events[i]["type"] == "note":
+                i += 1
             opts = []
-            while i < hi and events[i]["type"] == "choice":
-                # 选项块边界: 下一个 choice / jump / game_over(含) / 区间末尾
-                j = i + 1
-                while j < hi:
-                    tj = events[j]["type"]
-                    if tj == "choice":
-                        break
-                    if tj in ("jump", "game_over"):
-                        j += 1
-                        break
-                    j += 1
+            for k in range(n):
+                if i >= hi or events[i]["type"] != "choice":
+                    break  # 数据异常防御
+                lab = events[i]
+                if k < n - 1:
+                    j = _scan_block_end(events, i + 1, hi, sid)
+                else:
+                    j = _scan_last_end(events, i + 1, hi, sid)
                 block = parse_range(events, i + 1, j, sid, stats)
                 to, _to_name = find_first_jump(block)
                 opts.append({
-                    "txt": clean_choice_text(events[i].get("text", "")),
+                    "txt": clean_choice_text(lab.get("text", "")),
                     "items": block,
                     "to": to,
-                    "id": "c%d-%d" % (sid, events[i]["i"]),
+                    "id": "c%d-%d" % (sid, lab["i"]),
                 })
                 i = j
             items.append({"t": "choice", "opts": opts})
             stats["choices"] += len(opts)
             continue
-        elif t in ("narration", "dialogue"):
+        if t == "choice":
+            # 防御: 未挂靠选项组的标签 (正常数据不应出现), 单选项成组
+            j = _scan_last_end(events, i, hi, sid)
+            block = parse_range(events, i + 1, j, sid, stats)
+            to, _to_name = find_first_jump(block)
+            items.append({"t": "choice", "opts": [{
+                "txt": clean_choice_text(e.get("text", "")),
+                "items": block,
+                "to": to,
+                "id": "c%d-%d" % (sid, e["i"]),
+            }]})
+            stats["choices"] += 1
+            i = j
+            continue
+        if t in ("narration", "dialogue"):
             items.append({"t": "text", "sp": e.get("speaker", ""), "x": fmt_text(e.get("text", ""))})
         elif t == "show_pic":
             img, name = resolve_img(e.get("img"))
@@ -265,11 +370,13 @@ def clean_choice_text(t):
     return t.strip()
 
 def find_first_jump(items):
-    """在选项块里找第一个有效 jump(跳过工具剧情目标)，返回 (story_id 或 None, 名字)"""
+    """在选项块里找第一个有效 jump(跳过工具剧情目标)，返回 (story_id 或 None, 名字)。
+    命中的 jump 会被标记 used——它已由选项的 to 边代表, collect_edges 不再重复收集。"""
     for it in items:
         if it["t"] == "jump":
             if it.get("to") in UTILITY:
                 continue
+            it["used"] = True
             return it["to"], it.get("name", "")
         if it["t"] == "choice":
             for o in it["opts"]:
@@ -308,6 +415,17 @@ def main():
                 "endings": stats["endings"],
             })
 
+    # 边去重: 不同选项组中的同名选项跳同一目标时只保留一条
+    seen_edge = set()
+    dedup = []
+    for e in edges:
+        k = (e["f"], e["t"], e["l"])
+        if k in seen_edge:
+            continue
+        seen_edge.add(k)
+        dedup.append(e)
+    edges = dedup
+
     out = {
         "generated": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
         "entry": 1,
@@ -324,14 +442,14 @@ def main():
     print("OK: site/plot/js/data.js  stories=%d nodes=%d edges=%d" % (len(stories_out), len(nodes), len(edges)))
 
 def collect_edges(it, sid, edges):
-    if it["t"] == "jump" and it.get("to") and it["to"] not in UTILITY:
+    if it["t"] == "jump" and it.get("to") and it["to"] not in UTILITY and not it.get("used"):
         edges.append({"f": sid, "t": it["to"], "i": it.get("id", ""), "l": ""})
     elif it["t"] == "choice":
         for o in it["opts"]:
             if o.get("to") and o["to"] not in UTILITY:
                 edges.append({"f": sid, "t": o["to"], "i": o["id"], "l": o["txt"][:20]})
-            else:
-                collect_edges_all(o["items"], sid, edges)
+            # 无论选项自身是否有跳转, 都继续深入其块内收集嵌套选项组的边
+            collect_edges_all(o["items"], sid, edges)
 
 def collect_edges_all(items, sid, edges):
     for it in items:
