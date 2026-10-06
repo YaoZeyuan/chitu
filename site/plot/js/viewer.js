@@ -177,7 +177,11 @@
             var ob = el("button", "opt-btn", esc(o.txt || "(空选项)"));
             ob.type = "button";
             ob.addEventListener("click", function () {
-              if (o.to) gotoStory(o.to, o.id);
+              if (o.to) { gotoStory(o.to, o.id); return; }
+              // 无跳转: 有独立剧情块则滚到块内(与游戏一致, 块内可含 GAME OVER),
+              // 真正无独立剧情的选项才进入后续主线
+              var body = opt.querySelector(".opt-body");
+              if (body) body.scrollIntoView({ behavior: "smooth", block: "start" });
               else scrollNext(box);
             });
             head.appendChild(ob);
