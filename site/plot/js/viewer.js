@@ -58,22 +58,57 @@
     return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
 
-  function renderItems(items, container, topIdxRef) {
+  var CHAPTER_CARD_RE = /^(序章|尾声|终章|第.+[章话])(\.[a-zA-Z]+)?$/;
+
+  function addSprite(scene, it) {
+    var row = scene.querySelector(".sprites");
+    if (!row) return;
+    if (it.slot) {
+      var old = row.querySelector('.sprite[data-slot="' + it.slot + '"]');
+      if (old) old.remove();
+    }
+    var img;
+    if (it.img) {
+      img = el("img", "sprite" + (CHAPTER_CARD_RE.test(it.name || "") ? " overlay" : ""));
+      img.src = it.img;
+      img.alt = it.name;
+      img.loading = "lazy";
+    } else {
+      img = el("span", "sprite pic-missing", "[缺图] " + esc(it.name));
+    }
+    if (it.slot) img.dataset.slot = it.slot;
+    row.appendChild(img);
+  }
+
+  function renderItems(items, container, ctx) {
     items.forEach(function (it) {
       switch (it.t) {
         case "bg": {
-          var b = el("div", "bg-banner item" + (it.img ? "" : " noimg"));
+          // 同名背景重复显示(如双槽位黑屏)不重复开新场景
+          if (ctx.scene && ctx.scene.dataset.bgname === it.name) break;
+          var b = el("div", "scene item" + (it.img ? "" : " noimg"));
+          b.dataset.bgname = it.name || "";
           if (it.img) b.style.backgroundImage = "url('" + it.img + "')";
+          b.appendChild(el("div", "sprites"));
           b.appendChild(el("span", "bg-name", "🖼 " + esc(it.name)));
           container.appendChild(b);
+          ctx.scene = b;
           break;
         }
         case "pic": {
+          if (ctx.scene && ctx.scene.querySelector(".sprites")) { addSprite(ctx.scene, it); break; }
           var p = el("div", "pic-inline item");
           p.innerHTML = it.img
             ? '<img src="' + it.img + '" alt="' + esc(it.name) + '" loading="lazy">'
             : '<span class="pic-missing">[缺图] ' + esc(it.name) + "</span>";
           container.appendChild(p);
+          break;
+        }
+        case "hide": {
+          if (ctx.scene && it.slot) {
+            var old = ctx.scene.querySelector('.sprite[data-slot="' + it.slot + '"]');
+            if (old) old.remove();
+          }
           break;
         }
         case "text": {
@@ -149,7 +184,7 @@
             opt.appendChild(head);
             if (o.items && o.items.length) {
               var body = el("div", "opt-body");
-              renderItems(o.items, body);
+              renderItems(o.items, body, ctx);
               opt.appendChild(body);
             } else {
               opt.appendChild(el("div", "opt-empty", "（此选项无独立剧情，直接进入后续）"));
@@ -188,7 +223,7 @@
       "章节 " + sid + " · " + s.items.length + " 段内容 · " + s.choices + " 个选项 · " + s.endings + " 个结局"));
     main.appendChild(head);
 
-    renderItems(s.items, main);
+    renderItems(s.items, main, { scene: null });
 
     // 上一章 / 下一章
     var pos = ORDER.indexOf(sid);
