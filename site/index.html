@@ -1,163 +1,194 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>潜伏之赤途</title>
+    <style>
+      :root {
+        --bg: #f5f2ec;
+        --panel: #fffdf8;
+        --ink: #2c2a26;
+        --muted: #8a8478;
+        --line: #e3ddd0;
+        --accent: #a4322a;
+        --blue: #2b5d8a;
+      }
 
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>潜伏之赤途</title>
-  <style>
-    :root {
-      --bg: #f5f2ec;
-      --panel: #fffdf8;
-      --ink: #2c2a26;
-      --muted: #8a8478;
-      --line: #e3ddd0;
-      --accent: #a4322a;
-      --blue: #2b5d8a;
-    }
+      * {
+        box-sizing: border-box;
+      }
 
-    * { box-sizing: border-box; }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+      }
 
-    html, body { margin: 0; padding: 0; }
+      body {
+        background: var(--bg);
+        color: var(--ink);
+        font-family: "Noto Serif SC", "Songti SC", "SimSun", serif;
+        line-height: 1.8;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 40px 20px;
+      }
 
-    body {
-      background: var(--bg);
-      color: var(--ink);
-      font-family: "Noto Serif SC", "Songti SC", "SimSun", serif;
-      line-height: 1.8;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 40px 20px;
-    }
+      .head {
+        text-align: center;
+        margin-bottom: 36px;
+      }
 
-    .head {
-      text-align: center;
-      margin-bottom: 36px;
-    }
+      .head h1 {
+        margin: 0;
+        font-size: 34px;
+        font-weight: 700;
+        letter-spacing: 8px;
+        color: var(--accent);
+      }
 
-    .head h1 {
-      margin: 0;
-      font-size: 34px;
-      font-weight: 700;
-      letter-spacing: 8px;
-      color: var(--accent);
-    }
+      .head .sub {
+        margin-top: 10px;
+        font-size: 14px;
+        color: var(--muted);
+        letter-spacing: 2px;
+      }
 
-    .head .sub {
-      margin-top: 10px;
-      font-size: 14px;
-      color: var(--muted);
-      letter-spacing: 2px;
-    }
+      .head .rule {
+        width: 72px;
+        height: 3px;
+        background: var(--accent);
+        margin: 18px auto 0;
+        border-radius: 2px;
+      }
 
-    .head .rule {
-      width: 72px;
-      height: 3px;
-      background: var(--accent);
-      margin: 18px auto 0;
-      border-radius: 2px;
-    }
+      nav {
+        width: 100%;
+        max-width: 480px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
 
-    nav {
-      width: 100%;
-      max-width: 480px;
-      display: flex;
-      flex-direction: column;
-      gap: 14px;
-    }
+      nav a {
+        display: flex;
+        align-items: baseline;
+        gap: 12px;
+        padding: 16px 24px;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        color: var(--ink);
+        text-decoration: none;
+        box-shadow: 0 1px 6px rgba(60, 50, 30, 0.06);
+        transition:
+          transform 0.12s ease,
+          box-shadow 0.12s ease,
+          border-color 0.12s ease;
+      }
 
-    nav a {
-      display: flex;
-      align-items: baseline;
-      gap: 12px;
-      padding: 16px 24px;
-      background: var(--panel);
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      color: var(--ink);
-      text-decoration: none;
-      box-shadow: 0 1px 6px rgba(60, 50, 30, .06);
-      transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease;
-    }
+      nav a:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 14px rgba(60, 50, 30, 0.12);
+        border-color: var(--accent);
+        text-decoration: none;
+      }
 
-    nav a:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 4px 14px rgba(60, 50, 30, .12);
-      border-color: var(--accent);
-      text-decoration: none;
-    }
+      nav a .name {
+        font-size: 19px;
+        font-weight: 700;
+        letter-spacing: 2px;
+      }
 
-    nav a .name {
-      font-size: 19px;
-      font-weight: 700;
-      letter-spacing: 2px;
-    }
+      nav a .desc {
+        font-size: 13px;
+        color: var(--muted);
+      }
 
-    nav a .desc {
-      font-size: 13px;
-      color: var(--muted);
-    }
+      nav a.primary {
+        border-color: var(--accent);
+        background: var(--accent);
+        color: #fff;
+      }
 
-    nav a.primary {
-      border-color: var(--accent);
-      background: var(--accent);
-      color: #fff;
-    }
+      nav a.primary .name {
+        color: #fff;
+      }
+      nav a.primary .desc {
+        color: rgba(255, 255, 255, 0.82);
+      }
 
-    nav a.primary .name { color: #fff; }
-    nav a.primary .desc { color: rgba(255, 255, 255, .82); }
+      nav a .arrow {
+        margin-left: auto;
+        color: var(--muted);
+        font-size: 14px;
+      }
 
-    nav a .arrow {
-      margin-left: auto;
-      color: var(--muted);
-      font-size: 14px;
-    }
+      nav a.primary .arrow {
+        color: rgba(255, 255, 255, 0.8);
+      }
 
-    nav a.primary .arrow { color: rgba(255, 255, 255, .8); }
+      footer {
+        margin-top: 40px;
+        font-size: 12px;
+        color: var(--muted);
+        letter-spacing: 1px;
+      }
+    </style>
+  </head>
 
-    footer {
-      margin-top: 40px;
-      font-size: 12px;
-      color: var(--muted);
-      letter-spacing: 1px;
-    }
-  </style>
-</head>
+  <body>
+    <header class="head">
+      <h1>潜伏之赤途</h1>
+      <div class="sub">潜伏于无声处，行险于赤途中</div>
+      <div class="rule"></div>
+    </header>
 
-<body>
-  <header class="head">
-    <h1>潜伏之赤途</h1>
-    <div class="sub">潜伏于无声处，行险于赤途中</div>
-    <div class="rule"></div>
-  </header>
+    <nav>
+      <a class="primary" href="game.html">
+        <span class="name">开始游戏</span>
+        <span class="desc">原版游戏 · 可存档可选项</span>
+        <span class="arrow">→</span>
+      </a>
+      <a href="plot/index.html">
+        <span class="name">剧情脚本</span>
+        <span class="desc">章节速览 · 场景立绘 · 分支平铺</span>
+        <span class="arrow">→</span>
+      </a>
+      <a href="plot/branch.html">
+        <span class="name">分支概览</span>
+        <span class="desc">全剧情分支图 · 点击节点看详情</span>
+        <span class="arrow">→</span>
+      </a>
+      <a
+        href="https://mp.weixin.qq.com/s/QCk0tUsYSIgUTnppGfoQRw"
+        target="_blank"
+        rel="noopener"
+      >
+        <span class="name">剧情解析</span>
+        <span class="desc">赤途剧情解析</span>
+        <span class="arrow">↗</span>
+      </a>
+      <a href="https://yxshz.qq.com/" target="_blank" rel="noopener">
+        <span class="name">隐形守护者</span>
+        <span class="desc">原团队开发的手机版游戏</span>
+        <span class="arrow">↗</span>
+      </a>
+      <a
+        href="https://github.com/YaoZeyuan/chitu"
+        target="_blank"
+        rel="noopener"
+      >
+        <span class="name">项目地址</span>
+        <span class="desc">GitHub · YaoZeyuan/chitu</span>
+        <span class="arrow">↗</span>
+      </a>
+    </nav>
 
-  <nav>
-    <a class="primary" href="game.html">
-      <span class="name">开始游戏</span>
-      <span class="desc">原版游戏 · 可存档可选项</span>
-      <span class="arrow">→</span>
-    </a>
-    <a href="plot/index.html">
-      <span class="name">剧情脚本</span>
-      <span class="desc">章节速览 · 场景立绘 · 分支平铺</span>
-      <span class="arrow">→</span>
-    </a>
-    <a href="plot/branch.html">
-      <span class="name">分支概览</span>
-      <span class="desc">全剧情分支图 · 点击节点看详情</span>
-      <span class="arrow">→</span>
-    </a>
-    <a href="https://github.com/YaoZeyuan/chitu" target="_blank" rel="noopener">
-      <span class="name">项目地址</span>
-      <span class="desc">GitHub · YaoZeyuan/chitu</span>
-      <span class="arrow">↗</span>
-    </a>
-  </nav>
-
-  <footer>非官方复刻 · 仅供学习交流</footer>
-</body>
-
+    <footer>非官方复刻 · 仅供学习交流</footer>
+  </body>
 </html>
