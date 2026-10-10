@@ -1,3 +1,4 @@
+node_modules/
+dist/
 output/
 .workbuddy/
-node_modules/

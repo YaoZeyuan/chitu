@@ -15,16 +15,16 @@
     <meta name='360-fullscreen' content='true'/>
     <meta http-equiv='expires' content='0'/>
 	    <!-- 360浏览器默认开启极速模式 -->
-    <meta name=”renderer” content=”webkit”>
+    <meta name="renderer" content="webkit">
     <!-- 如果安装了GCF，则使用GCF来渲染页面，如果没有安装GCF，则使用最高版本的IE内核进行渲染 -->
-    <meta http-equiv=”X-UA-Compatible” content=”IE=Edge,chrome=1″ >
+    <meta http-equiv="X-UA-Compatible" content="IE=Edge,chrome=1" >
 	    <!-- UC默认竖屏 ，UC强制全屏 -->
     <meta name="browsermode" content="application"/>
     <!-- QQ强制全屏 -->
     <meta name="x5-page-mode" content="app"/> 
 	
-    <link type="text/css" rel="stylesheet" href="css/public.css"/>  
-	<!--<script type="text/javascript" src="js/eruda.min.js "></script>-->
+    <link type="text/css" rel="stylesheet" href="/css/public.css"/>  
+	<!--<script type="text/javascript" src="/js/eruda.min.js "></script>-->
     <script type="text/javascript">
 
         var debug = false;
@@ -100,32 +100,32 @@
 		var isShowDebug = GetQueryString("debug");
 		
 		if(isShowDebug == true || isShowDebug == "true" || window.location.href.indexOf("debug-")>-1){
-			var src = 'js/eruda.min.js ';
+			var src = '/js/eruda.min.js';
             document.write('<scr' + 'ipt src="' + src + '"></scr' + 'ipt>');
             document.write('<scr' + 'ipt>eruda.init();</scr' + 'ipt>');
 		}
     </script>
-    <script type="text/javascript" src="js/jquery-2.1.4.min.js "></script>
-    <script type="text/javascript" src="js/md5.js "></script>
-    <script type="text/javascript" src="js/base64-binary.js "></script>
-    <script type="text/javascript" src="js/base91.js "></script>
-    <script type="text/javascript" src="js/base64-binary.js "></script>
-    <script type="text/javascript" src="js/base64.js "></script>
-    <script type="text/javascript" src="js/CommonPlayer.js "></script>
-    <script type="text/javascript" src="js/Mark.js "></script>
-    <script type="text/javascript" src="js/GameConfig.js "></script>
+    <script type="text/javascript" src="/js/jquery-2.1.4.min.js "></script>
+    <script type="text/javascript" src="/js/md5.js "></script>
+    <script type="text/javascript" src="/js/base64-binary.js "></script>
+    <script type="text/javascript" src="/js/base91.js "></script>
+    <script type="text/javascript" src="/js/base64-binary.js "></script>
+    <script type="text/javascript" src="/js/base64.js "></script>
+    <script type="text/javascript" src="/js/CommonPlayer.js "></script>
+    <script type="text/javascript" src="/js/Mark.js "></script>
+    <script type="text/javascript" src="/js/GameConfig.js "></script>
 	<!-- <script type="text/javascript" src="https://res.wx.qq.com/open/js/jweixin-1.3.2.js"></script> -->
 
     <!-- 登录相关js  初始化-->
-    <!-- <script type="text/javascript" src="js/Login.js "></script> -->
+    <!-- <script type="text/javascript" src="/js/Login.js "></script> -->
  
         <!--如果是web引用-->
         <!--如果是H5引用-->    <!--统计-->
-    <script type="text/javascript" src="js/GameShare.js "></script>
-    <script type="text/javascript" src="js/GameMenu.js "></script>
-    <script type="text/javascript" src="js/SendFlower.js "></script>
-    <script type="text/javascript" src="js/GameGlobal.js "></script>
-    <script type="text/javascript" src="js/CountServer.js "></script>
+    <script type="text/javascript" src="/js/GameShare.js "></script>
+    <script type="text/javascript" src="/js/GameMenu.js "></script>
+    <script type="text/javascript" src="/js/SendFlower.js "></script>
+    <script type="text/javascript" src="/js/GameGlobal.js "></script>
+    <script type="text/javascript" src="/js/CountServer.js "></script>
 
 </head>
 
@@ -154,15 +154,15 @@
 <iframe id="sso_cross_check_login_modal" style="display:none;" frameborder="no" border="0" marginwidth="0" marginheight="0" scrolling="yes" allowtransparency="yes" width="2" height="2" src="">
 </iframe>
 <!--登录相关end-->
-<script type="text/javascript" src="js/OVideo.js"></script>
-<script type="text/javascript" src="js/OAudio.js"></script>
-<script type="text/javascript" src="js/laya.core.min.js "></script>
-<script type="text/javascript" src="js/laya.webgl.min.js "></script>
-<script type="text/javascript" src="js/laya.filter.min.js "></script>
-<script type="text/javascript" src="js/laya.ui.min.js "></script>
-<script type="text/javascript" src="js/laya.html.min.js "></script>
-<script type="text/javascript" src="js/LibClass.js "></script>
-<script type="text/javascript" src="js/pc-common.js "></script>
+<script type="text/javascript" src="/js/OVideo.js"></script>
+<script type="text/javascript" src="/js/OAudio.js"></script>
+<script type="text/javascript" src="/js/laya.core.min.js "></script>
+<script type="text/javascript" src="/js/laya.webgl.min.js "></script>
+<script type="text/javascript" src="/js/laya.filter.min.js "></script>
+<script type="text/javascript" src="/js/laya.ui.min.js "></script>
+<script type="text/javascript" src="/js/laya.html.min.js "></script>
+<script type="text/javascript" src="/js/LibClass.js "></script>
+<script type="text/javascript" src="/js/pc-common.js "></script>
 <!--用户自定义顺序文件添加到这里-->
 <!--jsfile--Custom-->
 <!--<script type="text/javascript" src="libs/Org_start_view.js"></script>-->
@@ -171,7 +171,7 @@
 <!--自定义的js(src文件夹下)文件自动添加到下面jsfile模块标签里面里-->
 <!--删除标签，ide不会自动添加js文件，请谨慎操作-->
 <!--启动类添加到这里-->
-<script type="text/javascript" src="./main.min.js"></script>
+<script type="text/javascript" src="/main.min.js"></script>
 
 <script>
 	function goWXShare(sendJson, success, fail, complete) {
@@ -293,5 +293,7 @@
         window["gameMain"].stageFocus();
     }
 </script>
+<!-- Vercel Analytics -->
+<script type="module" src="/src/game-main.js"></script>
 </body>
 </html>

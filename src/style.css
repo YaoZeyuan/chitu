@@ -1,0 +1,32 @@
+:root {
+  --bg: #f5f2ec;
+  --panel: #fffdf8;
+  --ink: #2c2a26;
+  --muted: #8a8478;
+  --line: #e3ddd0;
+  --accent: #a4322a;
+  --blue: #2b5d8a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: "Noto Serif SC", "Songti SC", "SimSun", serif;
+  line-height: 1.8;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+}
