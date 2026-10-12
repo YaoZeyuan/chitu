@@ -259,3 +259,14 @@ body.branch { overflow: hidden; }
 .side-panel li a:hover { text-decoration: underline; }
 .side-panel li .choice { color: #8a5a11; font-size: 12px; }
 .side-panel .btn { margin: 4px 0; }
+
+/* ===== 顶栏章节快捷按钮 ===== */
+#chapter-quick { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+#chapter-quick button {
+  font: inherit; font-size: 12.5px; cursor: pointer;
+  padding: 3px 10px; border-radius: 14px;
+  border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+}
+#chapter-quick button:hover {
+  border-color: var(--accent); color: var(--accent); background: var(--accent-soft);
+}

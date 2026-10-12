@@ -28,6 +28,11 @@ export default defineConfig({
   build: {
     outDir: "dist",
     emptyOutDir: true,
+    // @antv/g-canvas、g-base 等是 ESM+CJS 混合模块, 内含裸 require("../package.json")。
+    // 默认只转换纯 CJS 模块, 混合模块的 require 会漏到产物里, 线上报 require is not defined
+    commonjsOptions: {
+      transformMixedEsModules: true,
+    },
     rollupOptions: {
       // 多页入口：首页(Vue SPA) + 游戏页 + 剧情两页(原静态逻辑，仅注入 analytics)
       input: {

@@ -262,6 +262,20 @@ function render(data) {
     graph.focusItem(item, true, { easing: "easeCubic", duration: 400 });
   }
 
+  /* ---------------- 章节快捷按钮 ---------------- */
+  var CHAPTER_NAMES = ["序章", "第一章", "第二章", "第三章", "第四章", "第五章", "第六章"];
+  var quickBox = document.getElementById("chapter-quick");
+  CHAPTER_NAMES.forEach(function (name) {
+    var n = data.nodes.filter(function (x) { return x.name === name; })[0];
+    if (!n) return;
+    var b = document.createElement("button");
+    b.type = "button";
+    b.textContent = name;
+    b.title = "定位到「" + name + "」并居中";
+    b.addEventListener("click", function () { focusNode(n.id); });
+    quickBox.appendChild(b);
+  });
+
   /* ---------------- 章节定位下拉 ---------------- */
   var toc = document.getElementById("jump-toc");
   var list = data.nodes.filter(function (n) { return n.chapter || n.endings > 0; });

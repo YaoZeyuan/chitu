@@ -39,7 +39,11 @@
 
   function navigate(s, p, anchor, push) {
     var url = buildURL(s, p, anchor);
-    if (push !== false) history.pushState({ s: s, p: p }, "", url);
+    if (push !== false) {
+      // depth 记录应用内导航层数: >0 说明上一步也是本应用页面, 可安全 history.back()
+      var depth = (history.state && history.state.depth) || 0;
+      history.pushState({ s: s, p: p, depth: depth + 1 }, "", url);
+    }
     render(s, p, anchor);
   }
 
@@ -254,6 +258,8 @@
     if (s.split) {
       var back = el("button", "btn primary", "← 返回选项所在章节");
       back.addEventListener("click", function () {
+        // 优先浏览器回退(保留来路顺序); 无应用内历史(直达链接进入)才跳父章节
+        if (history.state && history.state.depth > 0) { history.back(); return; }
         var u = parseURL();
         var idx = u.p.lastIndexOf(s.parent);
         var p = idx >= 0 ? u.p.slice(0, idx + 1) : [s.parent];
@@ -301,14 +307,43 @@
     });
   }
 
+  /* ---------------- 剧情出现顺序 ---------------- */
+  // 章节id≠剧情先后(如第五章id=52却发生在第六章id=46之前)。
+  // 从入口按跳转/选项的出现顺序遍历得到真实剧情序, 拆分节点也作为路径中转参与遍历
+  var PLOT_ORDER = (function () {
+    var order = [], seen = {};
+    function walk(items) {
+      items.forEach(function (it) {
+        if (it.t === "jump" && it.to && !seen[it.to]) {
+          seen[it.to] = true; order.push(it.to);
+        } else if (it.t === "choice") {
+          it.opts.forEach(function (o) {
+            if (o.to && !seen[o.to]) { seen[o.to] = true; order.push(o.to); }
+            walk(o.items || []);
+          });
+        }
+      });
+    }
+    if (D.stories[D.entry]) { seen[D.entry] = true; order.push(D.entry); }
+    for (var i = 0; i < order.length; i++) walk(D.stories[order[i]].items);
+    // 未被任何跳转引用的章节(防御)按 id 序补在末尾
+    Object.keys(D.stories).map(Number).forEach(function (id) {
+      if (!seen[id] && D.utility.indexOf(id) < 0) { seen[id] = true; order.push(id); }
+    });
+    return order;
+  })();
+
   /* ---------------- TOC ---------------- */
-  ORDER.forEach(function (id) {
-    var s = D.stories[id];
-    var o = document.createElement("option");
-    o.value = id;
-    o.textContent = s.name + "（" + id + "）";
-    toc.appendChild(o);
-  });
+  // 按剧情出现先后排序, 前缀序号方便定位
+  ORDER.slice()
+    .sort(function (a, b) { return PLOT_ORDER.indexOf(a) - PLOT_ORDER.indexOf(b); })
+    .forEach(function (id, idx) {
+      var s = D.stories[id];
+      var o = document.createElement("option");
+      o.value = id;
+      o.textContent = (idx + 1) + ". " + s.name + "（" + id + "）";
+      toc.appendChild(o);
+    });
   toc.addEventListener("change", function () { gotoStory(parseInt(toc.value, 10)); });
 
   /* ---------------- BGM 控制 ---------------- */
@@ -354,6 +389,6 @@
 
   /* ---------------- 启动 ---------------- */
   var u = parseURL();
-  history.replaceState({ s: u.s, p: u.p }, "", location.href);
+  history.replaceState({ s: u.s, p: u.p, depth: 0 }, "", location.href);
   render(u.s, u.p, u.hash);
 })();
