@@ -229,3 +229,18 @@ body.branch { overflow: hidden; }
   .side-panel { width: 100%; max-height: 45vh; border-left: none; border-top: 1px solid var(--line); }
   .graph-tools { right: 16px; }
 }
+
+/* ===== G6 分支图（新版）===== */
+.side-panel .panel-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.side-panel .panel-head strong { font-size: 17px; color: var(--ink); }
+.side-panel .tags { display: inline-flex; gap: 4px; }
+.side-panel .tag { font-style: normal; font-size: 11px; border-radius: 8px; padding: 0 8px; }
+.tag-entry { background: #a4322a; color: #fff; }
+.tag-chapter { background: #e8f0f7; color: #1d3d59; }
+.tag-ending { background: #f5ecd4; color: #5a4310; }
+.side-panel .meta { font-size: 12.5px; color: var(--muted); margin: 10px 0; }
+.side-panel .summary { font-size: 13px; line-height: 1.7; color: var(--ink); background: var(--chip); border-radius: 8px; padding: 8px 10px; }
+.side-panel li a { color: #2b5d8a; text-decoration: none; }
+.side-panel li a:hover { text-decoration: underline; }
+.side-panel li .choice { color: #8a5a11; font-size: 12px; }
+.side-panel .btn { margin: 4px 0; }

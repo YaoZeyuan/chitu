@@ -16,18 +16,14 @@
 <div class="branch-wrap">
   <div class="graph-scroll" id="graph-scroll"></div>
   <aside class="side-panel" id="panel">
-    <div class="panel-empty">点击图中任意章节节点<br>查看详情、跳转关系与局部图</div>
+    <div class="panel-empty">点击图中任意章节节点<br>查看详情与跳转关系<br><br>滚轮缩放 · 拖拽平移</div>
   </aside>
 </div>
 <div class="graph-tools">
-  <button class="btn" id="zin" title="放大">＋</button>
-  <button class="btn" id="zout" title="缩小">－</button>
-  <button class="btn" id="zreset" title="重置">⟲</button>
+  <button class="btn" id="zreset" title="重置视图">⟲ 重置</button>
 </div>
 
-<script src="/plot/js/data.js"></script>
-<script src="/plot/js/branch.js"></script>
-<!-- Vercel Analytics -->
-<script type="module" src="/src/plot-main.js"></script>
+<!-- Vercel Analytics + G6 分支图渲染 -->
+<script type="module" src="/src/branch-main.js"></script>
 </body>
 </html>

@@ -30,7 +30,8 @@
     var q = new URLSearchParams();
     q.set("s", s);
     if (p && p.length) q.set("p", p.join("."));
-    return "index.html?" + q.toString() + (anchor ? "#" + anchor : "");
+    // 绝对路径：页面挂在 /plot 下，相对写法会被解析成 /index.html
+    return "/plot?" + q.toString() + (anchor ? "#" + anchor : "");
   }
 
   function navigate(s, p, anchor, push) {

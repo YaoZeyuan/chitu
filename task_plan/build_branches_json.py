@@ -1,0 +1,62 @@
+# -*- coding: utf-8 -*-
+"""从 public/plot/js/data.js 抽取剧情分支图，生成独立的 branches.json
+用法: python task_plan/build_branches_json.py
+"""
+import io
+import json
+import re
+import datetime
+
+SRC = "public/plot/js/data.js"
+DST = "public/plot/js/branches.json"
+
+
+def strip_html(x):
+    x = re.sub(r"<[^>]+>", "", x)
+    x = re.sub(r"\s+", " ", x).strip()
+    return x
+
+
+def main():
+    s = io.open(SRC, encoding="utf-8").read()
+    d = json.loads(s[s.index("{"):].rstrip().rstrip(";"))
+    stories = d["stories"]
+    graph = d["graph"]
+
+    nodes = []
+    for n in graph["nodes"]:
+        sid = str(n["id"])
+        story = stories.get(sid)
+        summary = ""
+        if story:
+            for it in story.get("items", []):
+                if it.get("t") == "text" and it.get("x"):
+                    summary = strip_html(it["x"])[:80]
+                    break
+        nodes.append({
+            "id": n["id"],
+            "name": n["name"],
+            "chapter": bool(re.match(r"^第.+[章话]", n["name"])),
+            "choices": n.get("choices", 0),
+            "endings": n.get("endings", 0),
+            "events": n.get("n", 0),
+            "summary": summary,
+        })
+
+    edges = [{"f": e["f"], "t": e["t"], "l": e.get("l", "")} for e in graph["edges"]]
+
+    out = {
+        "generated": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "source": "public/plot/js/data.js",
+        "entry": d["entry"],
+        "nodes": nodes,
+        "edges": edges,
+    }
+    io.open(DST, "w", encoding="utf-8").write(
+        json.dumps(out, ensure_ascii=False, separators=(",", ":"))
+    )
+    print("nodes:", len(nodes), "edges:", len(edges), "->", DST)
+
+
+if __name__ == "__main__":
+    main()

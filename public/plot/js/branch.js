@@ -254,7 +254,7 @@
          '<button class="btn" id="close-panel">关闭</button></div>';
     panel.innerHTML = h;
     document.getElementById("open-viewer").addEventListener("click", function () {
-      location.href = "index.html?s=" + id + "&p=" + buildPath(id);
+      location.href = "/plot?s=" + id + "&p=" + buildPath(id);
     });
     document.getElementById("close-panel").addEventListener("click", clearSelect);
     renderMini(id, out, inn);

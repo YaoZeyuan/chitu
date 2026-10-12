@@ -1,3 +1,4 @@
 allowBuilds:
-  esbuild: true
-allowBuilds:/n  esbuild: true
+  esbuild: false
+nodeLinker: hoisted
+verifyDepsBeforeRun: false

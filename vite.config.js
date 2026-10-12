@@ -1,8 +1,28 @@
 import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
 
+// 模拟 vercel.json 中的 rewrite: /plot -> /plot/index.html
+// （Vite dev/preview 不读 vercel.json，需要自己补）
+function plotIndexRewrite() {
+  function handler(req, res, next) {
+    if (req.url === "/plot" || req.url?.startsWith("/plot?")) {
+      req.url = req.url.replace("/plot", "/plot/index.html");
+    }
+    next();
+  }
+  return {
+    name: "plot-index-rewrite",
+    configureServer(server) {
+      server.middlewares.use(handler);
+    },
+    configurePreviewServer(server) {
+      server.middlewares.use(handler);
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [vue(), plotIndexRewrite()],
   // 游戏本体等静态资源原样放 public/，构建时整体拷贝到 dist/
   publicDir: "public",
   build: {
@@ -19,6 +39,8 @@ export default defineConfig({
     },
   },
   server: {
-    port: 5173,
+    // 5173 落在本机 Hyper-V 保留端口段(5129-5228)内，改用 3070
+    port: 3070,
+    host: "127.0.0.1",
   },
 });
