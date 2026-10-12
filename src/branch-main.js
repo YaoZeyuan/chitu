@@ -86,7 +86,7 @@ function render(data) {
     },
     layout: {
       type: "dagre",
-      rankdir: "LR",
+      rankdir: "TB",
       nodesep: 18,
       ranksep: 70,
       align: "UL",
@@ -135,7 +135,7 @@ function render(data) {
   function initialView() {
     graph.off("afterlayout", initialView);
     graph.fitView(40);
-    if (graph.getZoom() < 0.6) graph.zoomTo(0.6);
+    if (graph.getZoom() < 0.72) graph.zoomTo(0.72);
     var it = graph.findById(String(entry));
     if (it) graph.focusItem(it, false);
   }
