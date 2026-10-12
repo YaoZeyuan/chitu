@@ -75,7 +75,10 @@ def convert_event(code, e):
     def keys_by_int():
         return sorted(a, key=lambda x: int(x)) if a else []
 
-    if code == 100:   # 正文/旁白
+    if code == 100:   # 正文: Argv[0] 为说话人(空=旁白), Argv[2] 为文本
+        spk = (a.get("0") or "").strip()
+        if spk:
+            return {"type": "dialogue", "speaker": spk, "text": a.get("2", "")}
         return {"type": "narration", "text": a.get("2", "")}
     if code == 101:   # 选项UI指令: 全部选项文本
         return {"type": "choice_prompt", "opts": [a[k] for k in keys_by_int()]}

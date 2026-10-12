@@ -81,22 +81,32 @@ function render(data) {
     // 注意：不要开 fitView: true —— 它会在布局完成后异步再缩放一次，
     // 覆盖掉下面手动设置的初始视图
     animate: false,
+    plugins: [
+      // 微缩图：右下角，方便快速定位
+      new G6.Minimap({
+        container: "graph-minimap",
+        type: "delegate",
+        size: [170, 110],
+        delegateStyle: { fill: "#a4322a", stroke: "#a4322a" },
+        viewportClassName: "graph-minimap-viewport",
+      }),
+    ],
     modes: {
       default: ["drag-canvas", "zoom-canvas", "drag-node"],
     },
     layout: {
       type: "dagre",
       rankdir: "TB",
-      nodesep: 18,
-      ranksep: 70,
+      nodesep: 27,
+      ranksep: 105,
       align: "UL",
     },
     defaultNode: {
       type: "rect",
-      size: [150, 38],
+      size: [225, 57],
       labelCfg: {
         style: {
-          fontSize: 13,
+          fontSize: 20,
           fontFamily: '"Noto Serif SC","Songti SC","SimSun",serif',
         },
       },
@@ -108,18 +118,19 @@ function render(data) {
     defaultEdge: {
       type: "polyline",
       style: {
-        stroke: "#a89f8a",
-        lineWidth: 1.2,
-        radius: 12,
+        // 深蓝灰，与米色背景拉开对比
+        stroke: "#4a6fa5",
+        lineWidth: 2,
+        radius: 16,
         // 注意：G6.Arrow.triangle 是函数，须调用返回路径串；直接传函数会导致 Path 构造崩溃
-        endArrow: { path: "M 0,0 L 10,5 L 0,10 Z", fill: "#a89f8a" },
+        endArrow: { path: "M 0,0 L 12,6 L 0,12 Z", fill: "#4a6fa5" },
       },
       labelCfg: {
         autoRotate: true,
         style: {
           fill: "#8a5a11",
-          fontSize: 11,
-          background: { fill: "#fffdf8", padding: [2, 4, 2, 4], radius: 4 },
+          fontSize: 14,
+          background: { fill: "#fffdf8", padding: [3, 6, 3, 6], radius: 4 },
         },
       },
     },
@@ -197,26 +208,32 @@ function render(data) {
     if (raw.endings > 0) h += '<em class="tag tag-ending">结局</em>';
     h += "</span>";
     h += '<button class="btn" id="close-panel">关闭</button></div>';
+    h += '<div class="panel-body"><div class="panel-info">';
     h += '<p class="meta">事件 ' + raw.events + " · 选项 " + raw.choices + " · 结局标记 " + raw.endings + "</p>";
     if (raw.summary) h += '<p class="summary">' + esc(raw.summary) + "…</p>";
     h += '<p><a class="btn" href="/plot?s=' + id + '">进入速览 →</a></p>';
+    h += "</div>"; // /.panel-info
 
-    if (outEdges.length) {
-      h += "<h4>去向 (" + outEdges.length + ")</h4><ul>";
-      outEdges.forEach(function (e) {
-        h += '<li><a href="#" data-goto="' + e.t + '">' + esc(nodeById[e.t].name) + "</a>";
-        if (e.l) h += ' <span class="choice">【' + esc(e.l) + "】</span>";
-        h += "</li>";
-      });
-      h += "</ul>";
-    }
-    if (inEdges.length) {
-      h += "<h4>来源 (" + inEdges.length + ")</h4><ul>";
-      inEdges.forEach(function (e) {
-        h += '<li><a href="#" data-goto="' + e.f + '">' + esc(nodeById[e.f].name) + "</a></li>";
-      });
-      h += "</ul>";
-    }
+    // 来源（左）与去向（右）横向排列
+    h += '<div class="panel-lists">';
+    h += '<div class="list-col">';
+    h += "<h4>来源 (" + inEdges.length + ")</h4><ul>";
+    inEdges.forEach(function (e) {
+      h += '<li><a href="#" data-goto="' + e.f + '">' + esc(nodeById[e.f].name) + "</a></li>";
+    });
+    if (!inEdges.length) h += '<li class="none">无（入口节点）</li>';
+    h += "</ul></div>";
+    h += '<div class="list-col">';
+    h += "<h4>去向 (" + outEdges.length + ")</h4><ul>";
+    outEdges.forEach(function (e) {
+      h += '<li><a href="#" data-goto="' + e.t + '">' + esc(nodeById[e.t].name) + "</a>";
+      if (e.l) h += ' <span class="choice">【' + esc(e.l) + "】</span>";
+      h += "</li>";
+    });
+    if (!outEdges.length) h += '<li class="none">无（终局节点）</li>';
+    h += "</ul></div>";
+    h += "</div>"; // /.panel-lists
+    h += "</div>"; // /.panel-body
     panel.innerHTML = h;
     panel.scrollTop = 0;
 

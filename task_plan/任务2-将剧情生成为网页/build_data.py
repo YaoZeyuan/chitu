@@ -24,7 +24,7 @@ import datetime
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 GAME_JSON = os.path.join(ROOT, "glm-5.3-flash", "game.json")
-SITE = os.path.join(ROOT, "site")
+SITE = os.path.join(ROOT, "public")  # 2026-10-10: site/ 已改名 public/
 OUT_DIR = os.path.join(SITE, "plot", "js")
 
 # ---------------------------------------------------------------- 资源索引
@@ -177,6 +177,8 @@ def parse_range(events, lo, hi, sid, stats):
             continue
         if t == "narration":
             items.append({"t": "text", "sp": "", "x": fmt_text(e.get("text", ""))})
+        elif t == "dialogue":
+            items.append({"t": "text", "sp": e.get("speaker", ""), "x": fmt_text(e.get("text", ""))})
         elif t == "show_pic":
             img, name = resolve_img(e.get("img"))
             if name:
