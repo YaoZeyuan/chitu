@@ -113,6 +113,70 @@ def _plain(s):
 # 工具剧情(系统函数/黑屏渐入渐出/慢入慢出/一声枪响)，不作为分支图节点与跳转目标
 UTILITY = {3, 4, 5, 6, 47, 48, 51}
 
+# 选项嵌套超过此深度(层级>3)的选项块拆为独立故事节点, 方便浏览
+SPLIT_DEPTH = 3
+SPLIT_ID_BASE = 1000  # 拆分节点 id 从 1001 起, 避开真实章节 1-66
+
+# ---------------------------------------------------------------- 深嵌套拆分
+def _count_items(items):
+    """统计块内选项数与结局数"""
+    ch = en = 0
+    for it in items:
+        if it["t"] == "choice":
+            for o in it["opts"]:
+                ch += 1
+                c, e = _count_items(o.get("items") or [])
+                ch += c
+                en += e
+        elif it["t"] == "end":
+            en += 1
+    return ch, en
+
+def _clear_used(items):
+    """清除块内 jump 的 used 标记——拆分后这些 jump 的图边改由原故事收集"""
+    for it in items:
+        if it["t"] == "jump":
+            it.pop("used", None)
+        elif it["t"] == "choice":
+            for o in it["opts"]:
+                _clear_used(o.get("items") or [])
+
+def split_deep(items, depth, sid, story_name, stories_out, extract_ids,
+               counter, extracted_blocks):
+    """递归遍历 items, 把深度 > SPLIT_DEPTH 的选项块抽成独立故事节点。
+
+    depth: 当前 items 的嵌套深度(顶层=1), choice 选项块深度 = depth+1。
+    被抽出的块整体搬入新节点(其中更深的嵌套随节点整体下降, 无需再拆),
+    原选项就地替换为指向新节点的跳转(o.to=nid, o.items 清空, o.split 标记)。"""
+    for it in items:
+        if it["t"] != "choice":
+            continue
+        for o in it["opts"]:
+            blk = o.get("items") or []
+            if depth + 1 > SPLIT_DEPTH and blk:
+                counter[0] += 1
+                nid = SPLIT_ID_BASE + counter[0]
+                name = story_name + "·" + (o.get("txt") or "选项")
+                if name in extract_names(stories_out):
+                    name += "（%d）" % nid
+                ch, en = _count_items(blk)
+                _clear_used(blk)
+                stories_out[str(nid)] = {
+                    "id": nid, "name": name, "split": True, "parent": sid,
+                    "items": blk, "choices": ch, "endings": en,
+                }
+                extract_ids.add(nid)
+                extracted_blocks.append((sid, blk))
+                o["to"] = nid
+                o["items"] = []
+                o["split"] = True
+            else:
+                split_deep(blk, depth + 1, sid, story_name, stories_out,
+                           extract_ids, counter, extracted_blocks)
+
+def extract_names(stories_out):
+    return {v["name"] for v in stories_out.values() if v.get("split")}
+
 # ---------------------------------------------------------------- 线性化
 def parse_jump_target(t):
     m = re.match(r"(\d+):(.*)", t or "")
@@ -252,9 +316,6 @@ def main():
             "choices": stats["choices"],
             "endings": stats["endings"],
         }
-        # 收集 jump 边
-        for it in items:
-            collect_edges(it, sid, edges)
         if sid not in UTILITY:
             nodes.append({
                 "id": sid,
@@ -263,6 +324,43 @@ def main():
                 "choices": stats["choices"],
                 "endings": stats["endings"],
             })
+
+    # 深嵌套拆分: 嵌套>3层的选项块抽成独立节点(先于边收集)。
+    # 拆出的块整体搬入新节点, 其内部可能仍有>3层嵌套, 故以不动点方式反复拆分
+    extract_ids = set()
+    counter = [0]
+    extracted_blocks = []  # (原故事id, 被抽出的块)
+    def _root_name(sid):
+        """拆分节点的命名取根章节名, 避免『支线·支线·支线』式长名"""
+        v = stories_out[str(sid)]
+        while v.get("split"):
+            v = stories_out[str(v["parent"])]
+        return v["name"]
+    while True:
+        before = counter[0]
+        for sid_s in list(stories_out.keys()):
+            sid = int(sid_s)
+            if sid in UTILITY:
+                continue
+            split_deep(stories_out[sid_s]["items"], 1, sid,
+                       _root_name(sid), stories_out,
+                       extract_ids, counter, extracted_blocks)
+        if counter[0] == before:
+            break
+
+    # 收集 jump 边: 真实故事的顶层 + 被拆出块内的 jump(归属原故事, 保持分支图为章节粒度)
+    for sid_s, st in stories_out.items():
+        sid = int(sid_s)
+        if sid in extract_ids or sid in UTILITY:
+            continue
+        for it in st["items"]:
+            collect_edges(it, sid, edges, extract_ids)
+    for sid, blk in extracted_blocks:
+        collect_edges_all(blk, sid, edges, extract_ids)
+
+    if extract_ids:
+        nodes_split = sum(1 for v in stories_out.values() if v.get("split"))
+        print("  深嵌套拆分: %d 个选项块 -> 独立节点(id %d+)" % (nodes_split, SPLIT_ID_BASE + 1))
 
     # 边去重: 不同选项组中的同名选项跳同一目标时只保留一条
     seen_edge = set()
@@ -290,19 +388,20 @@ def main():
         f.write(js)
     print("OK: site/plot/js/data.js  stories=%d nodes=%d edges=%d" % (len(stories_out), len(nodes), len(edges)))
 
-def collect_edges(it, sid, edges):
-    if it["t"] == "jump" and it.get("to") and it["to"] not in UTILITY and not it.get("used"):
+def collect_edges(it, sid, edges, extract_ids=frozenset()):
+    if it["t"] == "jump" and it.get("to") and it["to"] not in UTILITY \
+            and it["to"] not in extract_ids and not it.get("used"):
         edges.append({"f": sid, "t": it["to"], "i": it.get("id", ""), "l": ""})
     elif it["t"] == "choice":
         for o in it["opts"]:
-            if o.get("to") and o["to"] not in UTILITY:
+            if o.get("to") and o["to"] not in UTILITY and o["to"] not in extract_ids:
                 edges.append({"f": sid, "t": o["to"], "i": o["id"], "l": o["txt"][:20]})
             # 无论选项自身是否有跳转, 都继续深入其块内收集嵌套选项组的边
-            collect_edges_all(o["items"], sid, edges)
+            collect_edges_all(o["items"], sid, edges, extract_ids)
 
-def collect_edges_all(items, sid, edges):
+def collect_edges_all(items, sid, edges, extract_ids=frozenset()):
     for it in items:
-        collect_edges(it, sid, edges)
+        collect_edges(it, sid, edges, extract_ids)
 
 if __name__ == "__main__":
     main()

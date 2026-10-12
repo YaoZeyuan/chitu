@@ -2,9 +2,12 @@
 (function () {
   "use strict";
   var D = window.PLOT_DATA;
+  // ORDER 只含正式章节(排除工具剧情与拆分支线节点), 用于 TOC 与上一章/下一章
   var ORDER = Object.keys(D.stories)
     .map(Number)
-    .filter(function (id) { return D.utility.indexOf(id) < 0; })
+    .filter(function (id) {
+      return D.utility.indexOf(id) < 0 && !D.stories[id].split;
+    })
     .sort(function (a, b) { return a - b; });
 
   var main = document.getElementById("main");
@@ -199,7 +202,8 @@
               var body = el("div", "opt-body");
               renderItems(o.items, body, ctx);
               opt.appendChild(body);
-            } else {
+            } else if (!o.to) {
+              // 无独立剧情且无跳转才提示直接进入后续; 拆分支线选项由右侧按钮进入
               opt.appendChild(el("div", "opt-empty", "（此选项无独立剧情，直接进入后续）"));
             }
             box.appendChild(opt);
@@ -232,22 +236,40 @@
 
     var head = el("div", "story-head");
     head.appendChild(el("h2", "", esc(s.name)));
-    head.appendChild(el("div", "meta",
-      "章节 " + sid + " · " + s.items.length + " 段内容 · " + s.choices + " 个选项 · " + s.endings + " 个结局"));
+    if (s.split) {
+      var pname = D.stories[s.parent] ? D.stories[s.parent].name : s.parent;
+      head.appendChild(el("div", "meta",
+        "支线节点 · 拆分自「" + esc(pname) + "」· " + s.items.length + " 段内容 · "
+        + s.choices + " 个选项 · " + s.endings + " 个结局"));
+    } else {
+      head.appendChild(el("div", "meta",
+        "章节 " + sid + " · " + s.items.length + " 段内容 · " + s.choices + " 个选项 · " + s.endings + " 个结局"));
+    }
     main.appendChild(head);
 
     renderItems(s.items, main, { scene: null });
 
-    // 上一章 / 下一章
-    var pos = ORDER.indexOf(sid);
+    // 上一章 / 下一章 (拆分支线节点不参与章节排序, 显示返回按钮)
     var nav = el("div", "page-nav");
-    var prev = el("button", "btn", pos > 0 ? "← 上一章：" + D.stories[ORDER[pos - 1]].name : "（已是第一章）");
-    prev.disabled = pos <= 0;
-    if (pos > 0) prev.addEventListener("click", function () { gotoStory(ORDER[pos - 1]); });
-    var next = el("button", "btn primary", pos < ORDER.length - 1 ? "下一章：" + D.stories[ORDER[pos + 1]].name + " →" : "（已是最后一章）");
-    next.disabled = pos >= ORDER.length - 1;
-    if (pos < ORDER.length - 1) next.addEventListener("click", function () { gotoStory(ORDER[pos + 1]); });
-    nav.appendChild(prev); nav.appendChild(next);
+    if (s.split) {
+      var back = el("button", "btn primary", "← 返回选项所在章节");
+      back.addEventListener("click", function () {
+        var u = parseURL();
+        var idx = u.p.lastIndexOf(s.parent);
+        var p = idx >= 0 ? u.p.slice(0, idx + 1) : [s.parent];
+        navigate(s.parent, p, null, true);
+      });
+      nav.appendChild(back);
+    } else {
+      var pos = ORDER.indexOf(sid);
+      var prev = el("button", "btn", pos > 0 ? "← 上一章：" + D.stories[ORDER[pos - 1]].name : "（已是第一章）");
+      prev.disabled = pos <= 0;
+      if (pos > 0) prev.addEventListener("click", function () { gotoStory(ORDER[pos - 1]); });
+      var next = el("button", "btn primary", pos < ORDER.length - 1 ? "下一章：" + D.stories[ORDER[pos + 1]].name + " →" : "（已是最后一章）");
+      next.disabled = pos >= ORDER.length - 1;
+      if (pos < ORDER.length - 1) next.addEventListener("click", function () { gotoStory(ORDER[pos + 1]); });
+      nav.appendChild(prev); nav.appendChild(next);
+    }
     main.appendChild(nav);
     main.appendChild(el("div", "footer-note",
       '潜伏之赤途 · 剧情速览 · 由 <a href="/plot/branch">剧情分支图</a> 可查看全局结构'));

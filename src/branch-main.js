@@ -241,7 +241,8 @@ function render(data) {
     panel.querySelectorAll("[data-goto]").forEach(function (a) {
       a.addEventListener("click", function (ev) {
         ev.preventDefault();
-        openPanel(Number(a.dataset.goto));
+        // 居中滚动到目标节点并高亮, 方便在全局图上定位
+        focusNode(Number(a.dataset.goto));
       });
     });
   }
