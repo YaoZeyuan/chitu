@@ -9,10 +9,12 @@ export default defineConfig({
     outDir: "dist",
     emptyOutDir: true,
     rollupOptions: {
-      // 多页入口：首页(Vue SPA) + 游戏页(原静态逻辑，仅注入 analytics)
+      // 多页入口：首页(Vue SPA) + 游戏页 + 剧情两页(原静态逻辑，仅注入 analytics)
       input: {
         main: "index.html",
         game: "game.html",
+        "plot/index": "plot/index.html",
+        "plot/branch": "plot/branch.html",
       },
     },
   },

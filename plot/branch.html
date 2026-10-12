@@ -4,14 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>潜伏之赤途 · 剧情分支图</title>
-<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="/plot/css/style.css">
 </head>
 <body class="branch">
 <header class="topbar">
   <h1>潜伏之赤途 <small>剧情分支图</small></h1>
   <select id="jump-toc" title="定位章节"></select>
   <span class="spacer"></span>
-  <a class="btn" href="index.html">剧情速览</a>
+  <a class="btn" href="/plot">剧情速览</a>
 </header>
 <div class="branch-wrap">
   <div class="graph-scroll" id="graph-scroll"></div>
@@ -25,7 +25,9 @@
   <button class="btn" id="zreset" title="重置">⟲</button>
 </div>
 
-<script src="js/data.js"></script>
-<script src="js/branch.js"></script>
+<script src="/plot/js/data.js"></script>
+<script src="/plot/js/branch.js"></script>
+<!-- Vercel Analytics -->
+<script type="module" src="/src/plot-main.js"></script>
 </body>
 </html>

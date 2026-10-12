@@ -249,7 +249,7 @@
     nav.appendChild(prev); nav.appendChild(next);
     main.appendChild(nav);
     main.appendChild(el("div", "footer-note",
-      '潜伏之赤途 · 剧情速览 · 由 <a href="branch.html">剧情分支图</a> 可查看全局结构'));
+      '潜伏之赤途 · 剧情速览 · 由 <a href="/plot/branch">剧情分支图</a> 可查看全局结构'));
 
     // TOC & 面包屑
     toc.value = String(sid);

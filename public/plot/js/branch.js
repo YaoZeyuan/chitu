@@ -237,7 +237,7 @@
     out.forEach(function (e) {
       h += '<li>' + esc(nodes[e.t] ? nodes[e.t].name : e.t) +
            (e.l ? ' <div class="lbl">选项：' + esc(e.l) + '</div>' : '') +
-           (e.i ? ' <a href="index.html?s=' + e.f + '#' + e.i + '">→ 从此处进入速览</a>' : '') + '</li>';
+           (e.i ? ' <a href="/plot?s=' + e.f + '#' + e.i + '">→ 从此处进入速览</a>' : '') + '</li>';
     });
     h += '</ul>';
     h += '<h4>来路 (' + inn.length + ')</h4><ul>';
