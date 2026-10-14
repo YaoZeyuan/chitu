@@ -295,3 +295,4 @@ body.branch { overflow: hidden; }
 .lg-cond { background: #f2eef8; border: 1.5px solid #6a5a8a; transform: rotate(45deg) scale(0.78); }
 .lg-green { background: #2e7d32; }
 .lg-note { color: #8a8375; }
+.lg-beat { background: #fbf6e8; border: 1.5px solid #a08a3c; border-radius: 6px; }

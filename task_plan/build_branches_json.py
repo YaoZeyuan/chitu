@@ -49,6 +49,11 @@ def main():
         if n.get("cond"):
             nodes[-1]["cond"] = True
             nodes[-1]["story"] = n.get("story")
+        # 关键选择节拍节点
+        if n.get("beat"):
+            nodes[-1]["beat"] = True
+            nodes[-1]["story"] = n.get("story")
+            nodes[-1]["anchor"] = n.get("anchor", "")
         # 内联分支节点(选项无跳转目标但带剧情内容): 透传附加字段
         if n.get("synthetic"):
             nodes[-1].update({

@@ -235,7 +235,7 @@ def parse_range(events, lo, hi, sid, stats, in_choice=False):
                 i = j
             if i < hi and events[i]["type"] == "merge":
                 i += 1
-            items.append({"t": "choice", "opts": opts})
+            items.append({"t": "choice", "opts": opts, "prompt": list(e["opts"])})
             stats["choices"] += len(opts)
             continue
         if t == "choice":
@@ -324,6 +324,16 @@ def find_first_jump(items):
 CHAPTERS = ["序章", "第一章", "第二章", "第三章", "第四章", "第五章", "第六章"]
 SYNTH_BASE = 2000  # 内联分支节点 id 从 2001 起(1000+ 已被拆分节点占用)
 COND_BASE = 3000   # 条件判断菱形节点 id 从 3001 起
+BEAT_BASE = 4000   # 关键选择节拍链节点 id 从 4001 起
+
+def collect_beats(items, beats):
+    """按事件顺序收集故事内全部选项组(含嵌套), 供节拍链构建。
+    DFS 顺序即事件顺序(嵌套块在事件流中连续)。"""
+    for it in items:
+        if it["t"] == "choice":
+            beats.append(it)
+            for o in it["opts"]:
+                collect_beats(o.get("items") or [], beats)
 
 def collect_conds(items, src_id, conds_out, seen):
     """线性扫描: cond 后(中间仅隔展示类事件)紧跟有效 jump -> 菱形条件节点。
@@ -494,6 +504,60 @@ def main():
             "choices": 0, "endings": 0,
             "cond": True, "story": c["story"],
         })
+
+    # 关键选择节拍链: 把章节内部全部选项组按剧情顺序串成可见的链,
+    # 选项出边/合成节点边改挂到对应节拍, 线性推进边挂到其前最近的节拍,
+    # 使"从上一章到下一章之间经历了哪些选择"在图上可见。
+    beats = []
+    for sid_s, st in stories_out.items():
+        if int(sid_s) in UTILITY:
+            continue
+        collect_beats(st["items"], beats)
+
+    def _anchor_key(s):
+        m = re.match(r"[cs](\d+)-(\d+)", s or "")
+        return (int(m.group(1)), int(m.group(2))) if m else None
+
+    beat_of_anchor = {}   # 选项锚点 -> 节拍节点 id
+    beats_by_sid = {}     # sid -> [(事件序号, 节拍id, choice item)]
+    for it in beats:
+        key = _anchor_key(it["opts"][0]["id"])
+        if key is None:
+            continue
+        beats_by_sid.setdefault(key[0], []).append((key[1], it))
+    nid = BEAT_BASE
+    for sid in sorted(beats_by_sid):
+        ordered = []
+        for ev, it in sorted(beats_by_sid[sid]):
+            nid += 1
+            ordered.append((ev, nid, it))
+            for o in it["opts"]:
+                beat_of_anchor[o["id"]] = nid
+            nodes.append({
+                "id": nid,
+                "name": "◆" + "/".join(o.get("txt", "") for o in it["opts"])[:18],
+                "n": 0, "choices": len(it["opts"]), "endings": 0,
+                "beat": True, "story": sid, "anchor": it["opts"][0]["id"],
+            })
+        beats_by_sid[sid] = ordered
+    # 重挂边: 选项边/合成边 -> 对应节拍; 无文字线性边 -> 其前最近的节拍
+    for e in edges:
+        if e["i"] in beat_of_anchor:
+            e["f"] = beat_of_anchor[e["i"]]
+            continue
+        m2 = re.match(r"j(\d+)-(\d+)", e["i"] or "")
+        if m2 and not e["l"]:
+            lst = [b for b in beats_by_sid.get(int(m2.group(1)), []) if b[0] < int(m2.group(2))]
+            if lst:
+                e["f"] = lst[-1][1]
+    # 链: 故事 -> 节拍1 -> 节拍2 -> ...
+    for sid, ordered in beats_by_sid.items():
+        prev = sid
+        for ev, bnid, it in ordered:
+            edges.append({"f": prev, "t": bnid, "i": "", "l": ""})
+            prev = bnid
+    if beats:
+        print("  关键选择节拍: %d 个(id %d+)" % (len(set(beat_of_anchor.values())), BEAT_BASE + 1))
 
     # 合成节点命名: "章节-大节点-选项链" (重名 -1/-2/-3)
     # 章节归属: 沿最终边从入口 DFS, 途经章节名节点时切换当前章节

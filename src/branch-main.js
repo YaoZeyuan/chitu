@@ -119,6 +119,22 @@ function init(data) {
     var n = nodeById[id];
     var type = nodeType(id);
     var c = COLORS[type];
+    // 关键选择节拍: 小号浅金矩形, 串出章节内部的剧情走势
+    if (n.beat) {
+      return {
+        id: String(id),
+        nodeType: type,
+        raw: n,
+        label: n.name,
+        size: [200, 46],
+        style: {
+          stroke: "#a08a3c", fill: "#fbf6e8", lineWidth: 1.5,
+          radius: 23,
+          shadowBlur: 4, shadowColor: "rgba(60,50,30,0.12)",
+        },
+        labelCfg: { style: { fill: "#6a5a1e", fontSize: 15, fontFamily: FONT } },
+      };
+    }
     // 条件判断: 菱形, 便于与剧情节点区分
     if (n.cond) {
       return {
@@ -309,6 +325,7 @@ function init(data) {
     if (chapterSet[id]) h += '<em class="tag tag-chapter">章节</em>';
     if (raw.synthetic) h += '<em class="tag tag-chapter">分支内容</em>';
     if (raw.cond) h += '<em class="tag tag-chapter">条件判断</em>';
+    if (raw.beat) h += '<em class="tag tag-chapter">关键选择</em>';
     if (isDeadEnd(id)) h += '<em class="tag tag-ending">剧终</em>';
     else if (raw.endings > 0) h += '<em class="tag tag-ending">含结局标记</em>';
     h += "</span>";
@@ -316,10 +333,10 @@ function init(data) {
     h += '<div class="panel-body"><div class="panel-info">';
     h += '<p class="meta">事件 ' + raw.events + " · 选项 " + raw.choices + " · 结局标记 " + raw.endings + "</p>";
     if (raw.summary) h += '<p class="summary">' + esc(raw.summary) + "…</p>";
-    // 内联分支节点: 跳到其选项所在页面并锚点定位到该选项; 菱形节点跳到所在章节页
+    // 内联分支/节拍节点: 跳到其选项所在页面并锚点定位到该选项; 菱形节点跳到所在章节页
     var viewUrl;
-    if (raw.synthetic && raw.anchor) viewUrl = "/plot?s=" + raw.story + "#" + raw.anchor;
-    else if (raw.synthetic || raw.cond) viewUrl = "/plot?s=" + (raw.story || id);
+    if ((raw.synthetic || raw.beat) && raw.anchor) viewUrl = "/plot?s=" + raw.story + "#" + raw.anchor;
+    else if (raw.synthetic || raw.cond || raw.beat) viewUrl = "/plot?s=" + (raw.story || id);
     else viewUrl = "/plot?s=" + id;
     h += '<p><a class="btn" href="' + viewUrl + '">进入速览 →</a></p>';
     h += "</div>";
