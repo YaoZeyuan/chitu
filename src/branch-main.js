@@ -155,7 +155,7 @@ function init(data) {
       id: String(id),
       nodeType: type,
       raw: n,
-      label: n.name,
+      label: n.name + (storyHasKids[id] ? (isExpanded(id) ? " ▾" : " ▸") : ""),
       style: {
         stroke: c.stroke,
         fill: c.fill,
@@ -218,9 +218,26 @@ function init(data) {
   var curEdges = [];     // 视图内真实边(含跨树边, 用于高亮与面板)
   var graph = null;
   var selectedId = null;
+  var showAll = false;   // 全部展开/收起(按钮)
+  var expanded = {};     // 用户点击展开的小节 story id -> true
+
+  // 节拍/合成/条件节点归属小节; 小节收起时折叠到小节节点上
+  var storyHasKids = {}; // 有可展开剧情的小节
+  data.nodes.forEach(function (n) {
+    if ((n.synthetic || n.beat || n.cond) && n.story != null) storyHasKids[n.story] = true;
+  });
+  function isExpanded(sid) { return showAll || expanded[sid]; }
+  function collapseId(id) {
+    var n = nodeById[id];
+    if (n && (n.synthetic || n.beat || n.cond) && n.story != null && !isExpanded(n.story)) return n.story;
+    return id;
+  }
 
   function buildView(v) {
     var inTree = function (id) { return v.tree === "all" || treeOf[id] === v.tree; };
+    var viewCount = 0;
+    data.nodes.forEach(function (n) { if (inTree(n.id)) viewCount++; });
+    // 节点数超过 50 的章节树默认收起小节细节, 点击小节或按钮展开
     var nodes = [], viewEdges = [];
     var proxyAdded = {};
     curNodeIds = {};
@@ -228,31 +245,45 @@ function init(data) {
     data.nodes.forEach(function (n) {
       if (!inTree(n.id)) return;
       curNodeIds[n.id] = true;
-      nodes.push(makeNode(n.id));
+      // 节拍/分支/条件节点仅在其所属小节展开时显示
+      var collapse = (n.synthetic || n.beat || n.cond) && !isExpanded(n.story);
+      if (!collapse) nodes.push(makeNode(n.id));
     });
-    // 统计视图内同对节点的平行边数量, 供 makeEdge 分配扇形偏移
-    var pairTotal = {}, pairIdx = {};
+    // 边端点折叠: 收起小节的节拍/分支/条件边重挂到小节节点; 去重、丢弃自环
+    var pairTotal = {}, pairIdx = {}, seenEdge = {};
     edges.forEach(function (e) {
-      if (inTree(e.f) && inTree(e.t)) {
-        var k = e.f + "-" + e.t;
-        pairTotal[k] = (pairTotal[k] || 0) + 1;
-      }
+      var f = collapseId(e.f), t = collapseId(e.t);
+      if (f === t) return;
+      var sk = f + "-" + t + "-" + (e.l || "");
+      if (seenEdge[sk]) return;
+      seenEdge[sk] = 1;
+      var k = f + "-" + t;
+      pairTotal[k] = (pairTotal[k] || 0) + 1;
     });
     edges.forEach(function (e) {
-      if (inTree(e.f) && inTree(e.t)) {
-        var k = e.f + "-" + e.t;
-        var pi = pairIdx[k] || 0;
-        pairIdx[k] = pi + 1;
-        curEdges.push(e);
-        viewEdges.push(makeEdge(e, false, null, pi, pairTotal[k]));
-      } else if (inTree(e.f)) {
-        curEdges.push(e);
-        if (v.tree === "all") {
-          viewEdges.push(makeEdge(e, true));
-        } else {
-          if (!proxyAdded[e.t]) { proxyAdded[e.t] = true; nodes.push(makeProxyNode(e.t)); }
-          viewEdges.push(makeEdge(e, true, "x" + e.t));
-        }
+      var f = collapseId(e.f), t = collapseId(e.t);
+      if (f === t) return;
+      var sk = f + "-" + t + "-" + (e.l || "");
+      if (!seenEdge[sk]) return;
+      seenEdge[sk] = 0;  // 消费标记, 重复边只取一条
+      var k = f + "-" + t;
+      var pi = pairIdx[k] || 0;
+      pairIdx[k] = pi + 1;
+      var m = { f: f, t: t, l: e.l || "" };
+      curEdges.push(m);
+      viewEdges.push(makeEdge(m, false, null, pi, pairTotal[k]));
+    });
+    // 跨树边(章节树视图内以占位节点表示)
+    edges.forEach(function (e) {
+      var f = collapseId(e.f), t = collapseId(e.t);
+      if (f === t || !inTree(f) || inTree(t)) return;
+      var m = { f: f, t: t, l: e.l || "" };
+      curEdges.push(m);
+      if (v.tree === "all") {
+        viewEdges.push(makeEdge(m, true));
+      } else {
+        if (!proxyAdded[t]) { proxyAdded[t] = true; nodes.push(makeProxyNode(t)); }
+        viewEdges.push(makeEdge(m, true, "x" + t));
       }
     });
     return { nodes: nodes, edges: viewEdges };
@@ -260,7 +291,7 @@ function init(data) {
 
   /* ---------- 面板 ---------- */
   var panel = document.getElementById("panel");
-  var PANEL_EMPTY = '<div class="panel-empty">点击图中任意章节节点<br>查看详情与跳转关系<br><br>红色节点 = 剧终 · 菱形 = 条件判断<br>绿色连线 = 跳转其他章节<br>边上文字 = 触发跳转的选项</div>';
+  var PANEL_EMPTY = '<div class="panel-empty">点击图中任意章节节点<br>查看详情与跳转关系<br><br>节点较多时默认收起细节<br>点击带 ▸ 的章节/小节节点<br>可展开/收起其下剧情<br><br>红色节点 = 剧终 · 菱形 = 条件判断<br>绿色连线 = 跳转其他章节<br>边上文字 = 触发跳转的选项</div>';
 
   function esc(s) {
     return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
@@ -323,6 +354,7 @@ function init(data) {
     h += '<span class="tags">';
     if (id === entry) h += '<em class="tag tag-entry">入口</em>';
     if (chapterSet[id]) h += '<em class="tag tag-chapter">章节</em>';
+    if (storyHasKids[id]) h += '<em class="tag tag-chapter">' + (isExpanded(id) ? "点击收起剧情 ▾" : "点击展开剧情 ▸") + "</em>";
     if (raw.synthetic) h += '<em class="tag tag-chapter">分支内容</em>';
     if (raw.cond) h += '<em class="tag tag-chapter">条件判断</em>';
     if (raw.beat) h += '<em class="tag tag-chapter">关键选择</em>';
@@ -335,8 +367,8 @@ function init(data) {
     if (raw.summary) h += '<p class="summary">' + esc(raw.summary) + "…</p>";
     // 内联分支/节拍节点: 跳到其选项所在页面并锚点定位到该选项; 菱形节点跳到所在章节页
     var viewUrl;
-    if ((raw.synthetic || raw.beat) && raw.anchor) viewUrl = "/plot?s=" + raw.story + "#" + raw.anchor;
-    else if (raw.synthetic || raw.cond || raw.beat) viewUrl = "/plot?s=" + (raw.story || id);
+    if ((raw.synthetic || raw.beat) && raw.anchor) viewUrl = "/plot?s=" + (raw.page || raw.story) + "#" + raw.anchor;
+    else if (raw.synthetic || raw.cond || raw.beat) viewUrl = "/plot?s=" + (raw.page || raw.story);
     else viewUrl = "/plot?s=" + id;
     h += '<p><a class="btn" href="' + viewUrl + '">进入速览 →</a></p>';
     h += "</div>";
@@ -477,12 +509,16 @@ function init(data) {
     function afterLayout() {
       graph.off("afterlayout", afterLayout);
       graph.fitView(40);
+      // 只钳制上限: 大图(收起小节后节点链很长)按 fitView 缩放即可, 强行放大反而把节点顶出视口
       var z = graph.getZoom();
-      if (z < 0.72) graph.zoomTo(0.72);
-      else if (z > 1.2) graph.zoomTo(1.2);
+      if (z > 1.2) graph.zoomTo(1.2);
       if (pendingFocus != null) {
         var it = graph.findById(String(pendingFocus));
         if (it) graph.focusItem(it, false);
+        // 展开小节后全图 fitView 会缩得过小, 以画布中心(focusItem 已把节点居中)为锚放大
+        if (graph.getZoom() < 0.5) {
+          graph.zoomTo(0.85, { x: graph.get("width") / 2, y: graph.get("height") / 2 });
+        }
         openPanel(pendingFocus);
         pendingFocus = null;
       } else {
@@ -491,9 +527,9 @@ function init(data) {
         if (start != null) {
           var sit = graph.findById(String(start));
           if (sit) {
-            // 先居中, 再把画布下移, 让起始节点停在视口顶部附近、下方剧情可见
+            // 先居中, 再把画布上移, 让起始节点停在视口顶部附近、下方剧情可见
             graph.focusItem(sit, false);
-            graph.translate(0, graph.get("height") * 0.35);
+            graph.translate(0, -graph.get("height") * 0.35);
           }
         }
       }
@@ -503,7 +539,16 @@ function init(data) {
     graph.on("node:click", function (evt) {
       var m = evt.item.get("model");
       if (m.nodeType === "proxy") { gotoNode(m.targetId); return; }
-      openPanel(Number(m.id));
+      var nid = Number(m.id);
+      // 点击小节/章节节点: 展开/收起其下具体剧情节点
+      if (storyHasKids[nid]) {
+        if (expanded[nid]) delete expanded[nid];
+        else expanded[nid] = true;
+        pendingFocus = nid;
+        rebuild();
+        return;
+      }
+      openPanel(nid);
     });
     graph.on("canvas:click", clearSelect);
 
@@ -520,8 +565,21 @@ function init(data) {
     };
 
     graph.render();
+    updateDetailBtn();
     window.__graph = graph;
   }
+
+  // "显示全部节点 / 仅显示小节" 切换按钮
+  var detailBtn = document.getElementById("toggle-detail");
+  function updateDetailBtn() {
+    if (!detailBtn) return;
+    detailBtn.textContent = showAll ? "全部收起" : "全部展开";
+    detailBtn.classList.toggle("active", showAll);
+  }
+  if (detailBtn) detailBtn.addEventListener("click", function () {
+    showAll = !showAll;
+    rebuild();
+  });
 
   function switchView(tree, focusId) {
     var v = views.filter(function (x) { return x.tree === tree; })[0];

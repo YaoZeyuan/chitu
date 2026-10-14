@@ -43,6 +43,7 @@ a:hover { text-decoration: underline; }
   background: var(--panel); color: var(--ink);
   padding: 4px 12px;
 }
+#toggle-detail.active { border-color: var(--accent); color: var(--accent); }
 .btn:hover { border-color: var(--accent); color: var(--accent); }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 .btn.primary:hover { opacity: .88; color: #fff; }

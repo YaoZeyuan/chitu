@@ -335,10 +335,13 @@ def collect_beats(items, beats):
             for o in it["opts"]:
                 collect_beats(o.get("items") or [], beats)
 
-def collect_conds(items, src_id, conds_out, seen):
+def collect_conds(items, src_id, conds_out, seen, page_id=None):
     """线性扫描: cond 后(中间仅隔展示类事件)紧跟有效 jump -> 菱形条件节点。
     命中的 jump 标记 used, 其直接边改由 菱形节点 表达。
-    展示类 item(text/bg/pic/hide/bgm/sub)不断开配对; choice/循环/结局断开。"""
+    展示类 item(text/bg/pic/hide/bgm/sub)不断开配对; choice/循环/结局断开。
+    page_id: 速览页所在故事(拆分节点内容在其自身页), 缺省=src_id。"""
+    if page_id is None:
+        page_id = src_id
     pending = None
     for it in items:
         t = it["t"]
@@ -354,6 +357,7 @@ def collect_conds(items, src_id, conds_out, seen):
                     conds_out.append({
                         "id": COND_BASE + len(conds_out) + 1,
                         "src": src_id, "story": src_id,
+                        "page": page_id,
                         "cond": pending["cond"], "to": to,
                         "anchor": pending.get("id", ""),
                     })
@@ -361,7 +365,7 @@ def collect_conds(items, src_id, conds_out, seen):
         elif t == "choice":
             pending = None
             for o in it["opts"]:
-                collect_conds(o.get("items") or [], src_id, conds_out, seen)
+                collect_conds(o.get("items") or [], src_id, conds_out, seen, page_id)
         elif t in ("end", "loopbreak", "loopstart", "loopend"):
             pending = None
 
@@ -468,8 +472,9 @@ def main():
         if sid in UTILITY:
             continue
         if st.get("split"):
-            # 拆分节点不是图节点: 边挂在原故事下, 锚点指向拆分节点页
-            collect_conds(st["items"], st["parent"], conds, seen_cond)
+            # 拆分节点不是图节点: 边/锚点挂在 parent 小节下,
+            # 内容页仍在拆分故事自身页(page), 供速览锚点链接
+            collect_conds(st["items"], st["parent"], conds, seen_cond, sid)
             collect_inline(st["items"], st["parent"], sid, [st["name"]], [], synths)
         else:
             collect_conds(st["items"], sid, conds, seen_cond)
@@ -483,6 +488,20 @@ def main():
         print("  条件菱形节点: %d 个(id %d+)" % (len(conds), COND_BASE + 1))
     if synths:
         print("  内联分支节点: %d 个(id %d+)" % (len(synths), SYNTH_BASE + 1))
+
+    # 折叠锚点归属: 拆分节点不上图, 其内容在图上归属 parent 小节
+    # (嵌套拆分的 parent 可能仍是拆分节点, 沿 parent 链找到真实图节点)
+    def root_of(sid):
+        while True:
+            st = stories_out.get(str(sid))
+            p = st.get("parent") if st else None
+            if p is None:
+                return sid
+            sid = p
+
+    for s in synths:
+        s["page"] = s["story"]        # 速览页: 拆分故事自身页
+        s["story"] = root_of(s["story"])  # 图上归属: parent 小节
 
     # 收集 jump 边: 真实故事的顶层 + 被拆出块内的 jump(归属原故事, 保持分支图为章节粒度)
     for sid_s, st in stories_out.items():
@@ -503,7 +522,7 @@ def main():
         nodes.append({
             "id": c["id"], "name": c["cond"][:20], "n": 0,
             "choices": 0, "endings": 0,
-            "cond": True, "story": c["story"],
+            "cond": True, "story": c["story"], "page": c.get("page", c["story"]),
         })
 
     # 关键选择节拍链: 把章节内部全部选项组按剧情顺序串成可见的链,
@@ -538,7 +557,8 @@ def main():
                 "id": nid,
                 "name": "◆" + "/".join(o.get("txt", "") for o in it["opts"])[:18],
                 "n": 0, "choices": len(it["opts"]), "endings": 0,
-                "beat": True, "story": sid, "anchor": it["opts"][0]["id"],
+                "beat": True, "story": root_of(sid), "page": sid,
+                "anchor": it["opts"][0]["id"],
             })
         beats_by_sid[sid] = ordered
     # 重挂边: 选项边/合成边 -> 对应节拍; 无文字线性 jump/条件边 -> 其前最近的节拍
@@ -551,13 +571,13 @@ def main():
             lst = [b for b in beats_by_sid.get(int(m2.group(1)), []) if b[0] < int(m2.group(2))]
             if lst:
                 e["f"] = lst[-1][1]
-    # 链: 故事 -> 节拍1 -> 节拍2 -> ...
+    # 链: 小节 -> 节拍1 -> 节拍2 -> ...
     for sid, ordered in beats_by_sid.items():
-        prev = sid
+        prev = root_of(sid)
         for ev, bnid, it in ordered:
             edges.append({"f": prev, "t": bnid, "i": "", "l": ""})
             prev = bnid
-    # 兜底: 无出边的节拍(链尾且故事经条件/结局收尾)连回所在章节, 避免"去向: 无"
+    # 兜底: 无出边的节拍(链尾且故事经条件/结局收尾)连回所在小节, 避免"去向: 无"
     out_cnt = {}
     for e in edges:
         out_cnt[e["f"]] = out_cnt.get(e["f"], 0) + 1
@@ -565,7 +585,7 @@ def main():
         if ordered:
             bnid = ordered[-1][1]
             if not out_cnt.get(bnid):
-                edges.append({"f": bnid, "t": sid, "i": "", "l": ""})
+                edges.append({"f": bnid, "t": root_of(sid), "i": "", "l": ""})
     # 汇回主线: 非死局的合成节点(分支内容)在其选项之后汇入主流程,
     # 连到该选项之后的下一个节拍(无则连回章节节点), 避免"去向: 无"
     for s in synths:
@@ -634,7 +654,7 @@ def main():
         nodes.append({
             "id": s["id"], "name": name, "n": s["events"],
             "choices": s["choices"], "endings": 1 if s["end"] else 0,
-            "synthetic": True, "story": s["story"], "anchor": s["anchor"],
+            "synthetic": True, "story": s["story"], "page": s.get("page", s["story"]), "anchor": s["anchor"],
             "dead": s["end"],
         })
 
