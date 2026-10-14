@@ -566,6 +566,20 @@ def main():
             bnid = ordered[-1][1]
             if not out_cnt.get(bnid):
                 edges.append({"f": bnid, "t": sid, "i": "", "l": ""})
+    # 汇回主线: 非死局的合成节点(分支内容)在其选项之后汇入主流程,
+    # 连到该选项之后的下一个节拍(无则连回章节节点), 避免"去向: 无"
+    for s in synths:
+        if s["end"]:
+            continue
+        key = _anchor_key(s["anchor"])
+        target = None
+        if key:
+            nxt = [b for b in beats_by_sid.get(key[0], []) if b[0] > key[1]]
+            if nxt:
+                target = nxt[0][1]
+        if target is None:
+            target = s["story"]
+        edges.append({"f": s["id"], "t": target, "i": "", "l": ""})
     if beats:
         print("  关键选择节拍: %d 个(id %d+)" % (len(set(beat_of_anchor.values())), BEAT_BASE + 1))
 
