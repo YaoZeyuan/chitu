@@ -2,7 +2,6 @@ import { inject } from "@vercel/analytics";
 import G6 from "@antv/g6";
 
 inject();
-window.__branchVer = 3; // 调试：确认浏览器加载的代码版本
 
 /* ---------------- 数据 ---------------- */
 async function load() {
@@ -11,155 +10,203 @@ async function load() {
   return res.json();
 }
 
-load().then(render).catch(function (err) {
+load().then(init).catch(function (err) {
   console.error(err);
   document.getElementById("graph-scroll").innerHTML =
     '<p style="padding:24px;color:#a4322a;white-space:pre-wrap">分支图加载失败：' +
     err.message + "\n" + String(err.stack || "").split("\n").slice(0, 5).join("\n") + "</p>";
 });
 
-/* ---------------- 渲染 ---------------- */
-function render(data) {
+/* ---------------- 初始化 ---------------- */
+function init(data) {
   var entry = data.entry;
 
   var nodeById = {};
   data.nodes.forEach(function (n) { nodeById[n.id] = n; });
-
-  // 过滤指向已删节点的边（防御）
   var edges = data.edges.filter(function (e) {
     return nodeById[e.f] && nodeById[e.t];
   });
 
+  // 出边表: 用于判定"剧情结束"(全图出度0)与树划分遍历顺序
+  var outMap = {};
+  edges.forEach(function (e) { (outMap[e.f] = outMap[e.f] || []).push(e); });
+  var terminal = {};
+  data.nodes.forEach(function (n) { terminal[n.id] = !outMap[n.id] || !outMap[n.id].length; });
+
+  /* ---------- 章节树划分 ---------- */
+  // 每章一棵树: 序章树含入口; 从入口按剧情流(出边顺序)DFS, 遇第一~六章节点切换所属树。
+  // 章节id与剧情先后不一致(如第五章id=52在第六章id=46之后才被访问到), DFS首达即归属。
+  var CHAPTERS = ["序章", "第一章", "第二章", "第三章", "第四章", "第五章", "第六章"];
+  var idByName = {};
+  data.nodes.forEach(function (n) {
+    if (CHAPTERS.indexOf(n.name) >= 0) idByName[n.name] = n.id;
+  });
+  var switchIdx = {}; // 第一~六章节点 -> 树号1..6 (序章树号0, 含入口)
+  for (var k = 1; k < CHAPTERS.length; k++) switchIdx[idByName[CHAPTERS[k]]] = k;
+
+  var treeOf = {};
+  (function assignTrees() {
+    var visited = {};
+    var stack = [{ id: entry, tree: 0 }];
+    while (stack.length) {
+      var it = stack.pop();
+      if (visited[it.id]) continue;
+      visited[it.id] = true;
+      var tr = switchIdx[it.id] != null ? switchIdx[it.id] : it.tree;
+      treeOf[it.id] = tr;
+      var outs = outMap[it.id] || [];
+      for (var i = outs.length - 1; i >= 0; i--) {
+        if (!visited[outs[i].t]) stack.push({ id: outs[i].t, tree: tr });
+      }
+    }
+    // 未被跳转引用的节点沿入边归入来源树(图边可能缺一些中转)
+    var changed = true;
+    while (changed) {
+      changed = false;
+      edges.forEach(function (e) {
+        if (treeOf[e.t] == null && treeOf[e.f] != null) { treeOf[e.t] = treeOf[e.f]; changed = true; }
+      });
+    }
+    // 真孤儿(如未被任何剧情引用的"连响四枪")归入"其他"树
+    data.nodes.forEach(function (n) { if (treeOf[n.id] == null) treeOf[n.id] = CHAPTERS.length; });
+  })();
+
+  var hasOrphan = data.nodes.some(function (n) { return treeOf[n.id] === CHAPTERS.length; });
+
+  // 视图列表: 序章 / 第一~六章 / [其他] / 全景
+  var views = CHAPTERS.map(function (name, k) { return { label: name, tree: k }; });
+  if (hasOrphan) views.push({ label: "其他", tree: CHAPTERS.length });
+  views.push({ label: "全景", tree: "all" });
+
+  /* ---------- 样式 ---------- */
   var COLORS = {
     entry: { stroke: "#a4322a", fill: "#a4322a", label: "#ffffff" },
     chapter: { stroke: "#2b5d8a", fill: "#e8f0f7", label: "#1d3d59" },
     ending: { stroke: "#7a5a12", fill: "#f5ecd4", label: "#5a4310" },
+    end: { stroke: "#7a4a9a", fill: "#f3ecfa", label: "#4a2a6a" },   // 剧情结束(无后续节点)
     normal: { stroke: "#c9c0ab", fill: "#fffdf8", label: "#2c2a26" },
+    proxy: { stroke: "#2e7d32", fill: "#e8f5e9", label: "#1b5e20" }, // 跨章节跳转占位
   };
+  var GREEN = "#2e7d32";
+  var BLUE = "#4a6fa5";
+  var FONT = '"Noto Serif SC","Songti SC","SimSun",serif';
 
-  // 样式直接写入 data model，渲染时就地生效（避免 render 后 updateItem 的时序问题）
-  var nodes = data.nodes.map(function (n) {
-    var type = "normal";
-    if (n.id === entry) type = "entry";
-    else if (n.endings > 0) type = "ending";
-    else if (n.chapter) type = "chapter";
+  var chapterSet = {};
+  CHAPTERS.forEach(function (name) {
+    if (idByName[name] != null) chapterSet[idByName[name]] = true;
+  });
+
+  function nodeType(id) {
+    if (id === entry) return "entry";
+    if (terminal[id]) return "end";
+    if (chapterSet[id]) return "chapter";
+    if (nodeById[id].endings > 0) return "ending";
+    return "normal";
+  }
+
+  function makeNode(id) {
+    var n = nodeById[id];
+    var type = nodeType(id);
     var c = COLORS[type];
     return {
-      id: String(n.id),
+      id: String(id),
       nodeType: type,
       raw: n,
       label: n.name,
       style: {
         stroke: c.stroke,
         fill: c.fill,
-        lineWidth: type === "entry" ? 2 : 1,
+        lineWidth: type === "entry" || type === "chapter" ? 2 : 1,
         radius: 9,
         shadowBlur: 4,
         shadowColor: "rgba(60,50,30,0.12)",
       },
-      labelCfg: {
-        style: {
-          fill: c.label,
-          fontSize: 13,
-          fontFamily: '"Noto Serif SC","Songti SC","SimSun",serif',
-        },
-      },
+      labelCfg: { style: { fill: c.label, fontSize: 20, fontFamily: FONT } },
     };
-  });
+  }
 
-  var graphEdges = edges.map(function (e) {
-    var m = { source: String(e.f), target: String(e.t) };
-    if (e.l) {
-      m.label = e.l.length > 14 ? e.l.slice(0, 13) + "…" : e.l;
-    }
-    return m;
-  });
-
-  var graph = new G6.Graph({
-    container: "graph-scroll",
-    renderer: "canvas",
-    // 注意：不要开 fitView: true —— 它会在布局完成后异步再缩放一次，
-    // 覆盖掉下面手动设置的初始视图
-    animate: false,
-    plugins: [
-      // 微缩图：右下角，方便快速定位
-      new G6.Minimap({
-        container: "graph-minimap",
-        type: "delegate",
-        size: [170, 110],
-        delegateStyle: { fill: "#a4322a", stroke: "#a4322a" },
-        viewportClassName: "graph-minimap-viewport",
-      }),
-    ],
-    modes: {
-      default: ["drag-canvas", "zoom-canvas", "drag-node"],
-    },
-    layout: {
-      type: "dagre",
-      rankdir: "TB",
-      nodesep: 27,
-      ranksep: 105,
-      align: "UL",
-    },
-    defaultNode: {
-      type: "rect",
-      size: [225, 57],
-      labelCfg: {
-        style: {
-          fontSize: 20,
-          fontFamily: '"Noto Serif SC","Songti SC","SimSun",serif',
-        },
-      },
-    },
-    nodeStateStyles: {
-      highlight: { stroke: "#a4322a", lineWidth: 2, shadowBlur: 10 },
-      dim: { opacity: 0.25 },
-    },
-    defaultEdge: {
-      type: "polyline",
+  // 跨章节跳转的占位小节点(点击切到目标章节树并定位)
+  function makeProxyNode(targetId) {
+    var c = COLORS.proxy;
+    return {
+      id: "x" + targetId,
+      nodeType: "proxy",
+      targetId: targetId,
+      label: "→ " + nodeById[targetId].name,
+      size: [150, 40],
       style: {
-        // 深蓝灰，与米色背景拉开对比
-        stroke: "#4a6fa5",
-        lineWidth: 2,
-        radius: 16,
-        // 注意：G6.Arrow.triangle 是函数，须调用返回路径串；直接传函数会导致 Path 构造崩溃
-        endArrow: { path: "M 0,0 L 12,6 L 0,12 Z", fill: "#4a6fa5" },
+        stroke: c.stroke, fill: c.fill, lineWidth: 1.5,
+        lineDash: [4, 3], radius: 8,
       },
-      labelCfg: {
+      labelCfg: { style: { fill: c.label, fontSize: 15, fontFamily: FONT } },
+    };
+  }
+
+  function makeEdge(e, cross, proxyId) {
+    var m = { source: String(e.f), target: String(proxyId || e.t) };
+    if (e.l) m.label = e.l.length > 14 ? e.l.slice(0, 13) + "…" : e.l;
+    if (cross) {
+      m.style = {
+        stroke: GREEN, lineWidth: 2, radius: 16,
+        endArrow: { path: "M 0,0 L 12,6 L 0,12 Z", fill: GREEN },
+      };
+      m.labelCfg = {
         autoRotate: true,
         style: {
-          fill: "#8a5a11",
-          fontSize: 14,
-          background: { fill: "#fffdf8", padding: [3, 6, 3, 6], radius: 4 },
+          fill: "#1b5e20", fontSize: 14,
+          background: { fill: "#e8f5e9", padding: [3, 6, 3, 6], radius: 4 },
         },
-      },
-    },
-    edgeStateStyles: {
-      highlight: { stroke: "#a4322a", lineWidth: 2 },
-      dim: { opacity: 0.12 },
-    },
-  });
-
-  graph.data({ nodes: nodes, edges: graphEdges });
-
-  // 布局完成后设置初始视图（render 时布局尚未算完，不能同步操作）
-  function initialView() {
-    graph.off("afterlayout", initialView);
-    graph.fitView(40);
-    if (graph.getZoom() < 0.72) graph.zoomTo(0.72);
-    var it = graph.findById(String(entry));
-    if (it) graph.focusItem(it, false);
+      };
+    }
+    return m;
   }
-  graph.on("afterlayout", initialView);
 
-  graph.render();
-
-  /* ---------------- 交互：点击节点 ---------------- */
-  var panel = document.getElementById("panel");
+  /* ---------- 当前视图状态 ---------- */
+  var currentView = views[0];
+  var curNodeIds = {};   // 视图内真实节点id集合
+  var curEdges = [];     // 视图内真实边(含跨树边, 用于高亮与面板)
+  var graph = null;
   var selectedId = null;
 
+  function buildView(v) {
+    var inTree = function (id) { return v.tree === "all" || treeOf[id] === v.tree; };
+    var nodes = [], viewEdges = [];
+    var proxyAdded = {};
+    curNodeIds = {};
+    curEdges = [];
+    data.nodes.forEach(function (n) {
+      if (!inTree(n.id)) return;
+      curNodeIds[n.id] = true;
+      nodes.push(makeNode(n.id));
+    });
+    edges.forEach(function (e) {
+      if (inTree(e.f) && inTree(e.t)) {
+        curEdges.push(e);
+        viewEdges.push(makeEdge(e, false));
+      } else if (inTree(e.f)) {
+        curEdges.push(e);
+        if (v.tree === "all") {
+          viewEdges.push(makeEdge(e, true));
+        } else {
+          if (!proxyAdded[e.t]) { proxyAdded[e.t] = true; nodes.push(makeProxyNode(e.t)); }
+          viewEdges.push(makeEdge(e, true, "x" + e.t));
+        }
+      }
+    });
+    return { nodes: nodes, edges: viewEdges };
+  }
+
+  /* ---------- 面板 ---------- */
+  var panel = document.getElementById("panel");
+  var PANEL_EMPTY = '<div class="panel-empty">点击图中任意章节节点<br>查看详情与跳转关系<br><br>绿色连线 = 跳转其他章节<br>紫色节点 = 剧情结束(无后续)</div>';
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+    });
+  }
+
   function clearSelect() {
-    if (selectedId == null) return;
     selectedId = null;
     graph.findAll("node", function () { return true; }).forEach(function (it) {
       graph.clearItemStates(it);
@@ -167,27 +214,36 @@ function render(data) {
     graph.findAll("edge", function () { return true; }).forEach(function (it) {
       graph.clearItemStates(it);
     });
-    panel.innerHTML = '<div class="panel-empty">点击图中任意章节节点<br>查看详情与跳转关系</div>';
+    panel.innerHTML = PANEL_EMPTY;
   }
 
   function highlight(id) {
     var linkedIds = {};
-    edges.forEach(function (e) {
+    curEdges.forEach(function (e) {
       if (e.f === id) linkedIds[e.t] = true;
       if (e.t === id) linkedIds[e.f] = true;
     });
     graph.findAll("node", function (it) {
-      var nid = Number(it.getID());
-      var rel = nid === id || linkedIds[nid];
-      graph.setItemState(it, rel ? "highlight" : "dim", true);
-      graph.setItemState(it, rel ? "dim" : "highlight", false);
+      var m = it.get("model");
+      if (m.nodeType === "proxy") {
+        var rel = linkedIds[m.targetId] || m.targetId === id;
+        graph.setItemState(it, rel ? "highlight" : "dim", true);
+        graph.setItemState(it, rel ? "dim" : "highlight", false);
+        return false;
+      }
+      var nid = Number(m.id);
+      var r = nid === id || linkedIds[nid];
+      graph.setItemState(it, r ? "highlight" : "dim", true);
+      graph.setItemState(it, r ? "dim" : "highlight", false);
       return false;
     });
     graph.findAll("edge", function (it) {
       var m = it.get("model");
-      var rel = m.source === String(id) || m.target === String(id);
-      graph.setItemState(it, rel ? "highlight" : "dim", true);
-      graph.setItemState(it, rel ? "dim" : "highlight", false);
+      var sid = Number(m.source);
+      var tid = Number(String(m.target).replace(/^x/, ""));
+      var r = sid === id || tid === id;
+      graph.setItemState(it, r ? "highlight" : "dim", true);
+      graph.setItemState(it, r ? "dim" : "highlight", false);
       return false;
     });
   }
@@ -198,42 +254,40 @@ function render(data) {
     if (!raw) return;
     highlight(id);
 
-    var outEdges = edges.filter(function (e) { return e.f === id; });
-    var inEdges = edges.filter(function (e) { return e.t === id; });
+    var outEdges = curEdges.filter(function (e) { return e.f === id; });
+    var inEdges = curEdges.filter(function (e) { return e.t === id; });
     var h = "";
     h += '<div class="panel-head"><strong>' + esc(raw.name) + "</strong>";
     h += '<span class="tags">';
-    if (raw.id === entry) h += '<em class="tag tag-entry">入口</em>';
-    if (raw.chapter) h += '<em class="tag tag-chapter">章节</em>';
-    if (raw.endings > 0) h += '<em class="tag tag-ending">结局</em>';
+    if (id === entry) h += '<em class="tag tag-entry">入口</em>';
+    if (chapterSet[id]) h += '<em class="tag tag-chapter">章节</em>';
+    if (terminal[id]) h += '<em class="tag tag-ending">剧情结束</em>';
+    else if (raw.endings > 0) h += '<em class="tag tag-ending">含结局标记</em>';
     h += "</span>";
     h += '<button class="btn" id="close-panel">关闭</button></div>';
     h += '<div class="panel-body"><div class="panel-info">';
     h += '<p class="meta">事件 ' + raw.events + " · 选项 " + raw.choices + " · 结局标记 " + raw.endings + "</p>";
     if (raw.summary) h += '<p class="summary">' + esc(raw.summary) + "…</p>";
     h += '<p><a class="btn" href="/plot?s=' + id + '">进入速览 →</a></p>';
-    h += "</div>"; // /.panel-info
+    h += "</div>";
 
-    // 来源（左）与去向（右）横向排列
+    // 来源（左）与去向（右）横向排列; 跨树目标标注 ↗, 点击后切换章节树
+    function listCol(title, list, dir) {
+      var s = '<div class="list-col"><h4>' + title + " (" + list.length + ")</h4><ul>";
+      list.forEach(function (e) {
+        var other = dir === "out" ? e.t : e.f;
+        var cross = treeOf[other] !== currentView.tree && currentView.tree !== "all";
+        s += '<li><a href="#" data-goto="' + other + '">' + esc(nodeById[other].name) + (cross ? " ↗" : "") + "</a>";
+        if (dir === "out" && e.l) s += ' <span class="choice">【' + esc(e.l) + "】</span>";
+        s += "</li>";
+      });
+      if (!list.length) s += '<li class="none">无</li>';
+      return s + "</ul></div>";
+    }
     h += '<div class="panel-lists">';
-    h += '<div class="list-col">';
-    h += "<h4>来源 (" + inEdges.length + ")</h4><ul>";
-    inEdges.forEach(function (e) {
-      h += '<li><a href="#" data-goto="' + e.f + '">' + esc(nodeById[e.f].name) + "</a></li>";
-    });
-    if (!inEdges.length) h += '<li class="none">无（入口节点）</li>';
-    h += "</ul></div>";
-    h += '<div class="list-col">';
-    h += "<h4>去向 (" + outEdges.length + ")</h4><ul>";
-    outEdges.forEach(function (e) {
-      h += '<li><a href="#" data-goto="' + e.t + '">' + esc(nodeById[e.t].name) + "</a>";
-      if (e.l) h += ' <span class="choice">【' + esc(e.l) + "】</span>";
-      h += "</li>";
-    });
-    if (!outEdges.length) h += '<li class="none">无（终局节点）</li>';
-    h += "</ul></div>";
-    h += "</div>"; // /.panel-lists
-    h += "</div>"; // /.panel-body
+    h += listCol("来源", inEdges, "in");
+    h += listCol("去向", outEdges, "out");
+    h += "</div></div>";
     panel.innerHTML = h;
     panel.scrollTop = 0;
 
@@ -241,61 +295,175 @@ function render(data) {
     panel.querySelectorAll("[data-goto]").forEach(function (a) {
       a.addEventListener("click", function (ev) {
         ev.preventDefault();
-        // 居中滚动到目标节点并高亮, 方便在全局图上定位
-        focusNode(Number(a.dataset.goto));
+        gotoNode(Number(a.dataset.goto));
       });
     });
   }
 
-  graph.on("node:click", function (evt) {
-    openPanel(Number(evt.item.getID()));
-  });
-
-  // 点击画布空白处取消
-  graph.on("canvas:click", clearSelect);
-
+  /* ---------- 视图切换与节点定位 ---------- */
   function focusNode(id) {
     var item = graph.findById(String(id));
     if (!item) return;
     graph.clearItemStates(item);
     openPanel(id);
+    // 居中到屏幕中间, 方便浏览
     graph.focusItem(item, true, { easing: "easeCubic", duration: 400 });
   }
 
-  /* ---------------- 章节快捷按钮 ---------------- */
-  var CHAPTER_NAMES = ["序章", "第一章", "第二章", "第三章", "第四章", "第五章", "第六章"];
+  function gotoNode(id) {
+    if (currentView.tree === "all" || treeOf[id] === currentView.tree) {
+      focusNode(id);
+      return;
+    }
+    switchView(treeOf[id], id);
+  }
+
+  function updateTabs() {
+    document.querySelectorAll("#chapter-quick button").forEach(function (b) {
+      b.classList.toggle("active", Number(b.dataset.view) === views.indexOf(currentView));
+    });
+  }
+
+  var pendingFocus = null;
+
+  function rebuild() {
+    if (graph) { graph.destroy(); graph = null; }
+    selectedId = null;
+    panel.innerHTML = PANEL_EMPTY;
+    var vd = buildView(currentView);
+
+    graph = new G6.Graph({
+      container: "graph-scroll",
+      renderer: "canvas",
+      // 注意：不要开 fitView: true —— 它会在布局完成后异步再缩放一次，覆盖手动视图
+      animate: false,
+      plugins: [
+        new G6.Minimap({
+          container: "graph-minimap",
+          type: "delegate",
+          size: [170, 110],
+          delegateStyle: { fill: "#a4322a", stroke: "#a4322a" },
+          viewportClassName: "graph-minimap-viewport",
+        }),
+      ],
+      modes: { default: ["drag-canvas", "zoom-canvas", "drag-node"] },
+      layout: {
+        type: "dagre",
+        rankdir: "TB",
+        nodesep: 27,
+        ranksep: 105,
+        align: "UL",
+      },
+      defaultNode: {
+        type: "rect",
+        size: [225, 57],
+        labelCfg: { style: { fontSize: 20, fontFamily: FONT } },
+      },
+      nodeStateStyles: {
+        highlight: { stroke: "#a4322a", lineWidth: 2, shadowBlur: 10 },
+        dim: { opacity: 0.25 },
+      },
+      defaultEdge: {
+        type: "polyline",
+        style: {
+          stroke: BLUE, lineWidth: 2, radius: 16,
+          // G6.Arrow.triangle 是函数, 须传路径串, 直接传函数会导致 Path 构造崩溃
+          endArrow: { path: "M 0,0 L 12,6 L 0,12 Z", fill: BLUE },
+        },
+        labelCfg: {
+          autoRotate: true,
+          style: {
+            fill: "#8a5a11", fontSize: 14,
+            background: { fill: "#fffdf8", padding: [3, 6, 3, 6], radius: 4 },
+          },
+        },
+      },
+      edgeStateStyles: {
+        highlight: { stroke: "#a4322a", lineWidth: 2 },
+        dim: { opacity: 0.12 },
+      },
+    });
+
+    graph.data({ nodes: vd.nodes, edges: vd.edges });
+
+    function afterLayout() {
+      graph.off("afterlayout", afterLayout);
+      graph.fitView(40);
+      var z = graph.getZoom();
+      if (z < 0.72) graph.zoomTo(0.72);
+      else if (z > 1.2) graph.zoomTo(1.2);
+      if (pendingFocus != null) {
+        var it = graph.findById(String(pendingFocus));
+        if (it) graph.focusItem(it, false);
+        openPanel(pendingFocus);
+        pendingFocus = null;
+      }
+    }
+    graph.on("afterlayout", afterLayout);
+
+    graph.on("node:click", function (evt) {
+      var m = evt.item.get("model");
+      if (m.nodeType === "proxy") { gotoNode(m.targetId); return; }
+      openPanel(Number(m.id));
+    });
+    graph.on("canvas:click", clearSelect);
+
+    // 缩放工具按钮(可能不存在, 防御)
+    var zin = document.getElementById("zin");
+    var zout = document.getElementById("zout");
+    var zreset = document.getElementById("zreset");
+    if (zin) zin.onclick = function () { graph.zoom(1.2); };
+    if (zout) zout.onclick = function () { graph.zoom(1 / 1.2); };
+    if (zreset) zreset.onclick = function () {
+      graph.fitView(40);
+      var z = graph.getZoom();
+      if (z > 1.2) graph.zoomTo(1.2);
+    };
+
+    graph.render();
+    window.__graph = graph;
+  }
+
+  function switchView(tree, focusId) {
+    var v = views.filter(function (x) { return x.tree === tree; })[0];
+    if (!v) return;
+    currentView = v;
+    updateTabs();
+    if (focusId != null) pendingFocus = focusId;
+    rebuild();
+  }
+
+  /* ---------- 顶栏章节快捷按钮(树切换) ---------- */
   var quickBox = document.getElementById("chapter-quick");
-  CHAPTER_NAMES.forEach(function (name) {
-    var n = data.nodes.filter(function (x) { return x.name === name; })[0];
-    if (!n) return;
+  views.forEach(function (v, idx) {
     var b = document.createElement("button");
     b.type = "button";
-    b.textContent = name;
-    b.title = "定位到「" + name + "」并居中";
-    b.addEventListener("click", function () { focusNode(n.id); });
+    b.textContent = v.label;
+    b.dataset.view = idx;
+    b.title = v.tree === "all" ? "显示全部章节树" : "查看「" + v.label + "」章节树";
+    b.addEventListener("click", function () { switchView(v.tree); });
     quickBox.appendChild(b);
   });
+  updateTabs();
 
-  /* ---------------- 章节定位下拉 ---------------- */
+  /* ---------- 章节定位下拉(按章节树分组排序) ---------- */
   var toc = document.getElementById("jump-toc");
-  var list = data.nodes.filter(function (n) { return n.chapter || n.endings > 0; });
+  var list = data.nodes.filter(function (n) { return chapterSet[n.id] || n.endings > 0; });
+  list.sort(function (a, b) {
+    var ta = treeOf[a.id], tb = treeOf[b.id];
+    if (ta !== tb) return ta - tb;
+    return a.id - b.id;
+  });
   list.forEach(function (n) {
     var opt = document.createElement("option");
     opt.value = n.id;
-    opt.textContent = (n.endings > 0 && !n.chapter ? "▸ " : "") + n.name;
+    var treeLabel = treeOf[n.id] < CHAPTERS.length ? CHAPTERS[treeOf[n.id]] : "其他";
+    opt.textContent = "〔" + treeLabel + "〕" + (n.endings > 0 && !chapterSet[n.id] ? "▸ " : "") + n.name;
     toc.appendChild(opt);
   });
   toc.addEventListener("change", function () {
-    focusNode(Number(toc.value));
+    gotoNode(Number(toc.value));
   });
 
-  document.getElementById("zreset").addEventListener("click", function () {
-    graph.fitView(40);
-  });
-}
-
-function esc(s) {
-  return String(s).replace(/[&<>"]/g, function (c) {
-    return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
-  });
+  rebuild();
 }

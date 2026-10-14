@@ -259,6 +259,9 @@ def parse_range(events, lo, hi, sid, stats):
             items.append({"t": "bgm", "f": f, "name": name})
         elif t == "bgm_fadeout":
             items.append({"t": "bgmstop"})
+        elif t == "substory":
+            to, to_name = parse_jump_target(e.get("name"))
+            items.append({"t": "sub", "to": to, "name": to_name, "id": "s%d-%d" % (sid, e["i"])})
         elif t == "jump":
             to, to_name = parse_jump_target(e.get("target"))
             items.append({"t": "jump", "to": to, "name": to_name, "id": "j%d-%d" % (sid, e["i"])})
@@ -277,7 +280,7 @@ def parse_range(events, lo, hi, sid, stats):
             items.append({"t": "loopstart"})
         elif t == "loop_end":
             items.append({"t": "loopend"})
-        # 其余类型(wait/se/bgs/move_pic/substory/note/click_wait/merge/menu_label/
+        # 其余类型(wait/se/bgs/move_pic/note/click_wait/merge/menu_label/
         # set_var/weather/shake/flash/op/bgs_fadeout/stop_se) 阅读视图略过
         i += 1
     return items

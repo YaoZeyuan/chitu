@@ -112,10 +112,35 @@
           b.appendChild(el("span", "bg-name", "🖼 " + esc(it.name)));
           container.appendChild(b);
           ctx.scene = b;
+          ctx.dirty = false;
           break;
         }
         case "pic": {
-          if (ctx.scene && ctx.scene.querySelector(".sprites")) { addSprite(ctx.scene, it); break; }
+          // 全屏图(如 眼睛.png/红屏.png)在游戏里是盖住整个画面的画面切换；
+          // 若此前已渲染过文本，当前场景卡早已"过期"，应新开续场景卡保证图文顺序一致
+          var wx2 = Number(it.w), hx2 = Number(it.h);
+          var xx2 = Number(it.x) || 0, yy2 = Number(it.y) || 0;
+          var isFullPic = (wx2 >= 100 && hx2 >= 100 && !xx2 && !yy2)
+            || isNaN(wx2) || isNaN(hx2);
+          if (ctx.scene && ctx.scene.querySelector(".sprites") && !(isFullPic && ctx.dirty)) {
+            addSprite(ctx.scene, it);
+            break;
+          }
+          if (ctx.scene && isFullPic && ctx.dirty) {
+            // 续场景卡：沿用当前背景，图片出现在其叙事位置
+            var c2 = el("div", "scene item");
+            c2.dataset.bgname = ctx.scene.dataset.bgname || "";
+            if (ctx.scene.style.backgroundImage) {
+              c2.style.backgroundImage = ctx.scene.style.backgroundImage;
+            }
+            c2.appendChild(el("div", "sprites"));
+            c2.appendChild(el("span", "bg-name", "🖼 " + esc(c2.dataset.bgname)));
+            container.appendChild(c2);
+            ctx.scene = c2;
+            addSprite(c2, it);
+            ctx.dirty = false;
+            break;
+          }
           var p = el("div", "pic-inline item");
           p.innerHTML = it.img
             ? '<img src="' + it.img + '" alt="' + esc(it.name) + '" loading="lazy">'
@@ -128,6 +153,7 @@
           break;
         }
         case "text": {
+          ctx.dirty = true; // 场景卡之后出现过文本, 后续全屏图应另起续场景卡
           if (it.sp) {
             container.appendChild(el("div", "txt-dlg item", '<span class="spk">【' + esc(it.sp) + "】</span>" + it.x));
           } else {
@@ -166,6 +192,13 @@
           j.id = it.id;
           j.addEventListener("click", function () { gotoStory(it.to, it.id); });
           container.appendChild(j);
+          break;
+        }
+        case "sub": {
+          var s3 = el("span", "jump-chip sub-chip item", "≫ 调用子剧情：" + esc(it.name || it.to));
+          s3.id = it.id;
+          s3.addEventListener("click", function () { gotoStory(it.to, it.id); });
+          container.appendChild(s3);
           break;
         }
         case "end": {

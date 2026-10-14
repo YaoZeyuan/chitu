@@ -17,6 +17,12 @@
 <div class="branch-wrap">
   <div class="graph-area">
     <div class="graph-scroll" id="graph-scroll"></div>
+    <div id="graph-legend">
+      <span><i class="lg lg-entry"></i>入口</span>
+      <span><i class="lg lg-chapter"></i>章节</span>
+      <span><i class="lg lg-end"></i>剧情结束(无后续)</span>
+      <span><i class="lg lg-green"></i>跳转其他章节</span>
+    </div>
     <div id="graph-minimap" title="微缩图 · 点击可定位"></div>
   </div>
   <aside class="side-panel" id="panel">
@@ -24,6 +30,8 @@
   </aside>
 </div>
 <div class="graph-tools">
+  <button class="btn" id="zin" title="放大">＋</button>
+  <button class="btn" id="zout" title="缩小">－</button>
   <button class="btn" id="zreset" title="重置视图">⟲ 重置</button>
 </div>
 
