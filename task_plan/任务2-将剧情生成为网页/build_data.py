@@ -196,8 +196,11 @@ def parse_jump_target(t):
         return None, t or ""
     return int(m.group(1)), m.group(2)
 
-def parse_range(events, lo, hi, sid, stats):
+def parse_range(events, lo, hi, sid, stats, in_choice=False):
     """把 [lo,hi) 事件区间线性化为 item 列表。
+
+    in_choice: 当前是否在选项块内(用于区分直接结局/选项块内结局,
+    剧终节点判定只看顶层直接结局, 选项块内结局由分支图合成节点表达)。
 
     选项组语义 (引擎 Indent 层级驱动, 由 rebuild_game_json.py 结构自检保证):
     - choice_prompt 位于层级 I, 携带全部 N 个选项文本;
@@ -221,7 +224,7 @@ def parse_range(events, lo, hi, sid, stats):
                 j = i + 1
                 while j < hi and events[j]["ind"] > lab["ind"]:
                     j += 1
-                block = parse_range(events, i + 1, j, sid, stats)
+                block = parse_range(events, i + 1, j, sid, stats, True)
                 to, _to_name = find_first_jump(block)
                 opts.append({
                     "txt": lab.get("text", ""),
@@ -240,7 +243,7 @@ def parse_range(events, lo, hi, sid, stats):
             j = i + 1
             while j < hi and events[j]["ind"] > e["ind"]:
                 j += 1
-            block = parse_range(events, i + 1, j, sid, stats)
+            block = parse_range(events, i + 1, j, sid, stats, True)
             to, _to_name = find_first_jump(block)
             items.append({"t": "choice", "opts": [{
                 "txt": e.get("text", ""),
@@ -280,6 +283,8 @@ def parse_range(events, lo, hi, sid, stats):
         elif t == "game_over":
             items.append({"t": "end", "id": "e%d-%d" % (sid, e["i"])})
             stats["endings"] += 1
+            if not in_choice:
+                stats["direct_ends"] += 1  # 顶层直接结局(剧终判定依据)
         elif t == "if":
             items.append({"t": "cond", "kind": "if", "cond": e.get("cond", "")})
         elif t == "elseif":
@@ -318,6 +323,36 @@ def find_first_jump(items):
 # 命名 "章节-大节点-选项文本"(重名加 -1/-2), 死局块标 dead 供前端紫色标记
 CHAPTERS = ["序章", "第一章", "第二章", "第三章", "第四章", "第五章", "第六章"]
 SYNTH_BASE = 2000  # 内联分支节点 id 从 2001 起(1000+ 已被拆分节点占用)
+COND_BASE = 3000   # 条件判断菱形节点 id 从 3001 起
+
+def collect_conds(items, src_id, conds_out, seen):
+    """线性扫描: cond 后(中间仅隔展示类事件)紧跟有效 jump -> 菱形条件节点。
+    命中的 jump 标记 used, 其直接边改由 菱形节点 表达。
+    展示类 item(text/bg/pic/hide/bgm/sub)不断开配对; choice/循环/结局断开。"""
+    pending = None
+    for it in items:
+        t = it["t"]
+        if t == "cond":
+            pending = it
+        elif t == "jump":
+            to = it.get("to")
+            if pending is not None and to and to not in UTILITY:
+                key = (src_id, pending["cond"], to)
+                if key not in seen:
+                    seen.add(key)
+                    it["used"] = True
+                    conds_out.append({
+                        "id": COND_BASE + len(conds_out) + 1,
+                        "src": src_id, "story": src_id,
+                        "cond": pending["cond"], "to": to,
+                    })
+            pending = None
+        elif t == "choice":
+            pending = None
+            for o in it["opts"]:
+                collect_conds(o.get("items") or [], src_id, conds_out, seen)
+        elif t in ("end", "loopbreak", "loopstart", "loopend"):
+            pending = None
 
 def _blk_count(items):
     """统计块内 (文本数, 选项数, 是否含结局标记)"""
@@ -376,7 +411,7 @@ def main():
 
     for s in data["stories"]:
         sid = s["id"]
-        stats = {"choices": 0, "endings": 0}
+        stats = {"choices": 0, "endings": 0, "direct_ends": 0}
         items = parse_range(s["events"], 0, len(s["events"]), sid, stats)
         stories_out[str(sid)] = {
             "id": sid,
@@ -392,6 +427,7 @@ def main():
                 "n": s["eventCount"],
                 "choices": stats["choices"],
                 "endings": stats["endings"],
+                "direct": stats["direct_ends"],  # 顶层直接结局数(剧终判定)
             })
 
     # 深嵌套拆分: 嵌套>3层的选项块抽成独立节点(先于边收集)。
@@ -412,6 +448,31 @@ def main():
         if counter[0] == before:
             break
 
+    # 内联分支节点 + 条件菱形节点: 先于边收集(菱形节点需标记 used jump)
+    synths = []
+    conds = []
+    seen_cond = set()
+    for sid_s, st in stories_out.items():
+        sid = int(sid_s)
+        if sid in UTILITY:
+            continue
+        if st.get("split"):
+            # 拆分节点不是图节点: 边挂在原故事下, 锚点指向拆分节点页
+            collect_conds(st["items"], st["parent"], conds, seen_cond)
+            collect_inline(st["items"], st["parent"], sid, [st["name"]], [], synths)
+        else:
+            collect_conds(st["items"], sid, conds, seen_cond)
+            collect_inline(st["items"], sid, sid, [st["name"]], [], synths)
+    for c in conds:
+        edges.append({"f": c["src"], "t": c["id"], "i": "", "l": ""})
+        edges.append({"f": c["id"], "t": c["to"], "i": "", "l": ""})
+    for s in synths:
+        edges.append({"f": s["src"], "t": s["id"], "i": s["anchor"], "l": s["txt"][:20]})
+    if conds:
+        print("  条件菱形节点: %d 个(id %d+)" % (len(conds), COND_BASE + 1))
+    if synths:
+        print("  内联分支节点: %d 个(id %d+)" % (len(synths), SYNTH_BASE + 1))
+
     # 收集 jump 边: 真实故事的顶层 + 被拆出块内的 jump(归属原故事, 保持分支图为章节粒度)
     for sid_s, st in stories_out.items():
         sid = int(sid_s)
@@ -426,21 +487,13 @@ def main():
         nodes_split = sum(1 for v in stories_out.values() if v.get("split"))
         print("  深嵌套拆分: %d 个选项块 -> 独立节点(id %d+)" % (nodes_split, SPLIT_ID_BASE + 1))
 
-    # 内联分支节点: 无跳转目标的选项块(死局结局/汇回主线的分支内容)上图
-    synths = []
-    for sid_s, st in stories_out.items():
-        sid = int(sid_s)
-        if sid in UTILITY:
-            continue
-        if st.get("split"):
-            # 拆分节点不是图节点: 边挂在原故事下, 锚点指向拆分节点页
-            collect_inline(st["items"], st["parent"], sid, [st["name"]], [], synths)
-        else:
-            collect_inline(st["items"], sid, sid, [st["name"]], [], synths)
-    for s in synths:
-        edges.append({"f": s["src"], "t": s["id"], "i": s["anchor"], "l": s["txt"][:20]})
-    if synths:
-        print("  内联分支节点: %d 个(id %d+)" % (len(synths), SYNTH_BASE + 1))
+    # 菱形节点记录: 前端以菱形渲染
+    for c in conds:
+        nodes.append({
+            "id": c["id"], "name": c["cond"][:20], "n": 0,
+            "choices": 0, "endings": 0,
+            "cond": True, "story": c["story"],
+        })
 
     # 合成节点命名: "章节-大节点-选项链" (重名 -1/-2/-3)
     # 章节归属: 沿最终边从入口 DFS, 途经章节名节点时切换当前章节

@@ -42,6 +42,13 @@ def main():
             "events": n.get("n", 0),
             "summary": summary,
         })
+        # 顶层直接结局数(剧终判定: 含结局但都是选项块内结局的不算剧终)
+        if n.get("direct") is not None:
+            nodes[-1]["direct"] = n["direct"]
+        # 条件判断菱形节点
+        if n.get("cond"):
+            nodes[-1]["cond"] = True
+            nodes[-1]["story"] = n.get("story")
         # 内联分支节点(选项无跳转目标但带剧情内容): 透传附加字段
         if n.get("synthetic"):
             nodes[-1].update({
