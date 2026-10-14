@@ -397,6 +397,17 @@ def _first_text(items, limit=70):
                 return x[:limit]
     return ""
 
+def _block_text(items, limit=800):
+    """块内全部文本(去html标签拼接), 供 LLM 精选摘要用(不进 branches.json)"""
+    parts = []
+    for it in items:
+        if it["t"] == "text" and it.get("x"):
+            x = re.sub(r"<[^>]+>", "", it["x"])
+            x = re.sub(r"\s+", " ", x).strip()
+            if x:
+                parts.append(x)
+    return " / ".join(parts)[:limit]
+
 def collect_inline(items, src_id, container, base_parts, chain, synths):
     """递归遍历故事/分支块: 无跳转目标的选项创建图节点, 挂在 src_id 下。
     src_id: 图上边的起点(真实故事id或外层合成节点id);
@@ -422,6 +433,7 @@ def collect_inline(items, src_id, container, base_parts, chain, synths):
                     "chain": list(chain) + [o.get("txt", "")],
                     "end": end, "events": t, "choices": c,
                     "summary": _first_text(blk),
+                    "_blktext": _block_text(blk),
                 })
                 collect_inline(blk, nid, container, base_parts,
                                chain + [o.get("txt", "")], synths)
@@ -570,6 +582,7 @@ def main():
                 "n": 0, "choices": len(it["opts"]), "endings": 0,
                 "beat": True, "story": root_of(sid), "page": sid,
                 "anchor": it["opts"][0]["id"],
+                "_opttext": " / ".join(o.get("txt", "") for o in it["opts"]),
             })
         beats_by_sid[sid] = ordered
     # 重挂边: 选项边/合成边 -> 对应节拍; 无文字线性 jump/条件边 -> 其前最近的节拍
@@ -667,6 +680,7 @@ def main():
             "choices": s["choices"], "endings": 1 if s["end"] else 0,
             "synthetic": True, "story": s["story"], "page": s.get("page", s["story"]), "anchor": s["anchor"],
             "dead": s["end"], "summary": s.get("summary", ""),
+            "_blktext": s.get("_blktext", ""),
         })
 
     # 边去重: 不同选项组中的同名选项跳同一目标时只保留一条
@@ -679,6 +693,21 @@ def main():
         seen_edge.add(k)
         dedup.append(e)
     edges = dedup
+
+    # LLM 精选输入: 节点原始文本(仅本地用, 以 _ 开头的字段不进 branches.json)
+    llm_out = os.path.join(os.path.dirname(SITE), "task_plan", "llm_curate")
+    os.makedirs(llm_out, exist_ok=True)
+    llm_nodes = []
+    for n in nodes:
+        text = n.pop("_blktext", "") or n.pop("_opttext", "")
+        if not text and n["name"] in CHAPTERS:
+            # 章节/小节节点: 复用其故事全文
+            text = _block_text(stories_out[str(n["id"])]["items"])
+        if text:
+            llm_nodes.append({"id": n["id"], "name": n["name"], "text": text})
+    with open(os.path.join(llm_out, "nodes_input.json"), "w", encoding="utf-8") as f:
+        json.dump(llm_nodes, f, ensure_ascii=False, indent=1)
+    print("  LLM 精选输入: %d 个节点 -> task_plan/llm_curate/nodes_input.json" % len(llm_nodes))
 
     out = {
         "generated": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),

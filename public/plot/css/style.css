@@ -44,6 +44,9 @@ a:hover { text-decoration: underline; }
   padding: 4px 12px;
 }
 #toggle-detail.active, #toggle-key.active { border-color: var(--accent); color: var(--accent); }
+.panel-body .btn-row { display: flex; gap: 8px; margin: 6px 0 2px; }
+.panel-body .btn-row .btn { flex: 1; text-align: center; text-decoration: none; }
+.panel-body .btn-row .btn.primary { font-weight: 600; }
 .btn:hover { border-color: var(--accent); color: var(--accent); }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 .btn.primary:hover { opacity: .88; color: #fff; }

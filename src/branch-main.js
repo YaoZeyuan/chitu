@@ -5,9 +5,15 @@ inject();
 
 /* ---------------- 数据 ---------------- */
 async function load() {
-  const res = await fetch("/plot/js/branches.json");
+  var res = await fetch("/plot/js/branches.json");
   if (!res.ok) throw new Error("branches.json 加载失败: " + res.status);
-  return res.json();
+  var data = await res.json();
+  // LLM 精选数据(摘要覆盖 + 关键抉择标记); 加载失败不阻塞, 退回机械摘要
+  try {
+    var r2 = await fetch("/plot/js/llm_curated.json");
+    if (r2.ok) data.curated = await r2.json();
+  } catch (e) { /* ignore */ }
+  return data;
 }
 
 load().then(init).catch(function (err) {
@@ -23,6 +29,18 @@ function init(data) {
 
   var nodeById = {};
   data.nodes.forEach(function (n) { nodeById[n.id] = n; });
+
+  /* ---------- LLM 精选合并 ---------- */
+  // curated: { "<id>": ["≤36字摘要", key0/1] }; 摘要覆盖机械摘要, key=1 并入关键抉择视图
+  var curatedKey = {};
+  if (data.curated) {
+    Object.keys(data.curated).forEach(function (k) {
+      var id = Number(k), c = data.curated[k];
+      if (!nodeById[id]) return;
+      if (c[0]) nodeById[id].summary = c[0];
+      if (c[1]) curatedKey[id] = true;
+    });
+  }
   var edges = data.edges.filter(function (e) {
     return nodeById[e.f] && nodeById[e.t];
   });
@@ -183,7 +201,7 @@ function init(data) {
       };
     }
     // 其余全部为卡片: 标题 + 摘要 + 统计
-    var title = n.name + (storyHasKids[id] ? (isExpanded(id) ? " ▾" : " ▸") : "");
+    var title = (curatedKey[id] ? "★ " : "") + n.name + (storyHasKids[id] ? (isExpanded(id) ? " ▾" : " ▸") : "");
     var summary = n.summary || "";
     if (summary.length > 44) summary = summary.slice(0, 43) + "…";
     var meta = [];
@@ -282,7 +300,7 @@ function init(data) {
     data.nodes.forEach(function (n) {
       if (!inTree(n.id)) return;
       if (n.id === entry || chapterSet[n.id] || n.cond || isDeadEnd(n.id)
-          || storyHasKids[n.id]) key[n.id] = true;
+          || storyHasKids[n.id] || curatedKey[n.id]) key[n.id] = true;
     });
     Object.keys(key).forEach(function (k) { keep[Number(k)] = true; });
     var adj = {};
@@ -446,13 +464,15 @@ function init(data) {
     h += '<button class="btn" id="close-panel">关闭</button></div>';
     h += '<div class="panel-body"><div class="panel-info">';
     h += '<p class="meta">事件 ' + raw.events + " · 选项 " + raw.choices + " · 结局标记 " + raw.endings + "</p>";
-    if (raw.summary) h += '<p class="summary">' + esc(raw.summary) + "…</p>";
+    if (raw.summary) h += '<p class="summary">' + esc(raw.summary) + "</p>";
     // 内联分支/节拍节点: 跳到其选项所在页面并锚点定位到该选项; 菱形节点跳到所在章节页
     var viewUrl;
     if ((raw.synthetic || raw.beat) && raw.anchor) viewUrl = "/plot?s=" + (raw.page || raw.story) + "#" + raw.anchor;
     else if (raw.synthetic || raw.cond || raw.beat) viewUrl = "/plot?s=" + (raw.page || raw.story);
     else viewUrl = "/plot?s=" + id;
-    h += '<p><a class="btn" href="' + viewUrl + '">进入速览 →</a></p>';
+    h += '<p class="btn-row"><a class="btn primary" href="' + viewUrl + '" target="_blank">▶ 从这里开始读</a>'
+       + '<a class="btn" href="' + viewUrl + '" target="_blank">进入速览 →</a></p>';
+    h += '<p class="meta">链接直达 /plot 对应剧情节点, 可从此处继续阅读</p>';
     h += "</div>";
 
     // 来源（左）与去向（右）横向排列; 跨树目标标注 ↗, 点击后切换章节树
