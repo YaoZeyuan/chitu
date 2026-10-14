@@ -434,7 +434,7 @@ function init(data) {
           viewportClassName: "graph-minimap-viewport",
         }),
       ],
-      modes: { default: ["drag-canvas", "zoom-canvas", "drag-node"] },
+      modes: { default: ["drag-canvas", "scroll-canvas", "drag-node"] },
       layout: {
         type: "dagre",
         rankdir: "TB",

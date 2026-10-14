@@ -286,11 +286,11 @@ def parse_range(events, lo, hi, sid, stats, in_choice=False):
             if not in_choice:
                 stats["direct_ends"] += 1  # 顶层直接结局(剧终判定依据)
         elif t == "if":
-            items.append({"t": "cond", "kind": "if", "cond": e.get("cond", "")})
+            items.append({"t": "cond", "kind": "if", "cond": e.get("cond", ""), "id": "d%d-%d" % (sid, e["i"])})
         elif t == "elseif":
-            items.append({"t": "cond", "kind": "elseif", "cond": e.get("cond", "")})
+            items.append({"t": "cond", "kind": "elseif", "cond": e.get("cond", ""), "id": "d%d-%d" % (sid, e["i"])})
         elif t == "else":
-            items.append({"t": "cond", "kind": "else", "cond": ""})
+            items.append({"t": "cond", "kind": "else", "cond": "", "id": "d%d-%d" % (sid, e["i"])})
         elif t == "loop_break":
             items.append({"t": "loopbreak"})
         elif t == "loop_start":
@@ -355,6 +355,7 @@ def collect_conds(items, src_id, conds_out, seen):
                         "id": COND_BASE + len(conds_out) + 1,
                         "src": src_id, "story": src_id,
                         "cond": pending["cond"], "to": to,
+                        "anchor": pending.get("id", ""),
                     })
             pending = None
         elif t == "choice":
@@ -474,7 +475,7 @@ def main():
             collect_conds(st["items"], sid, conds, seen_cond)
             collect_inline(st["items"], sid, sid, [st["name"]], [], synths)
     for c in conds:
-        edges.append({"f": c["src"], "t": c["id"], "i": "", "l": ""})
+        edges.append({"f": c["src"], "t": c["id"], "i": c.get("anchor", ""), "l": ""})
         edges.append({"f": c["id"], "t": c["to"], "i": "", "l": ""})
     for s in synths:
         edges.append({"f": s["src"], "t": s["id"], "i": s["anchor"], "l": s["txt"][:20]})
@@ -540,12 +541,12 @@ def main():
                 "beat": True, "story": sid, "anchor": it["opts"][0]["id"],
             })
         beats_by_sid[sid] = ordered
-    # 重挂边: 选项边/合成边 -> 对应节拍; 无文字线性边 -> 其前最近的节拍
+    # 重挂边: 选项边/合成边 -> 对应节拍; 无文字线性 jump/条件边 -> 其前最近的节拍
     for e in edges:
         if e["i"] in beat_of_anchor:
             e["f"] = beat_of_anchor[e["i"]]
             continue
-        m2 = re.match(r"j(\d+)-(\d+)", e["i"] or "")
+        m2 = re.match(r"[jd](\d+)-(\d+)", e["i"] or "")
         if m2 and not e["l"]:
             lst = [b for b in beats_by_sid.get(int(m2.group(1)), []) if b[0] < int(m2.group(2))]
             if lst:
@@ -556,6 +557,15 @@ def main():
         for ev, bnid, it in ordered:
             edges.append({"f": prev, "t": bnid, "i": "", "l": ""})
             prev = bnid
+    # 兜底: 无出边的节拍(链尾且故事经条件/结局收尾)连回所在章节, 避免"去向: 无"
+    out_cnt = {}
+    for e in edges:
+        out_cnt[e["f"]] = out_cnt.get(e["f"], 0) + 1
+    for sid, ordered in beats_by_sid.items():
+        if ordered:
+            bnid = ordered[-1][1]
+            if not out_cnt.get(bnid):
+                edges.append({"f": bnid, "t": sid, "i": "", "l": ""})
     if beats:
         print("  关键选择节拍: %d 个(id %d+)" % (len(set(beat_of_anchor.values())), BEAT_BASE + 1))
 
