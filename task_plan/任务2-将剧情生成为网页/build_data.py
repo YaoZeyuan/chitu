@@ -343,14 +343,20 @@ def collect_conds(items, src_id, conds_out, seen, page_id=None):
     if page_id is None:
         page_id = src_id
     pending = None
+    last_cond_text = ""   # 最近一次非空 if/elseif 条件, 供 else(空条件) 分支借用
     for it in items:
         t = it["t"]
         if t == "cond":
             pending = it
+            if it.get("cond"):
+                last_cond_text = it["cond"]
         elif t == "jump":
             to = it.get("to")
             if pending is not None and to and to not in UTILITY:
-                key = (src_id, pending["cond"], to)
+                # else 分支条件文本为空: 借用所属 if 的条件, 且成立/不成立语义相反
+                inverted = pending["kind"] == "else" and not pending.get("cond")
+                cond_text = pending["cond"] or (last_cond_text if inverted else "")
+                key = (src_id, cond_text, to)
                 if key not in seen:
                     seen.add(key)
                     it["used"] = True
@@ -358,8 +364,9 @@ def collect_conds(items, src_id, conds_out, seen, page_id=None):
                         "id": COND_BASE + len(conds_out) + 1,
                         "src": src_id, "story": src_id,
                         "page": page_id,
-                        "cond": pending["cond"], "to": to,
+                        "cond": cond_text, "to": to,
                         "anchor": pending.get("id", ""),
+                        "inverted": inverted,
                     })
             pending = None
         elif t == "choice":
@@ -504,7 +511,9 @@ def main():
             collect_inline(st["items"], sid, sid, [st["name"]], [], synths)
     for c in conds:
         edges.append({"f": c["src"], "t": c["id"], "i": c.get("anchor", ""), "l": ""})
-        edges.append({"f": c["id"], "t": c["to"], "i": "", "l": "成立"})
+        # else 分支借用 if 条件命名: jump 走的是条件不成立的一侧
+        jump_label = "不成立" if c.get("inverted") else "成立"
+        edges.append({"f": c["id"], "t": c["to"], "i": "", "l": jump_label})
     for s in synths:
         edges.append({"f": s["src"], "t": s["id"], "i": s["anchor"], "l": s["txt"][:20]})
     if conds:
@@ -635,7 +644,9 @@ def main():
                 target = nxt[0][1]
         if target is None:
             target = c["src"]
-        edges.append({"f": c["id"], "t": target, "i": "", "l": "不成立"})
+        # inverted(else 借用 if 条件)时, 主线兜底边走的是条件成立侧(if 分支, 通常接剧终)
+        fallback_label = "成立" if c.get("inverted") else "不成立"
+        edges.append({"f": c["id"], "t": target, "i": "", "l": fallback_label})
     if beats:
         print("  关键选择节拍: %d 个(id %d+)" % (len(set(beat_of_anchor.values())), BEAT_BASE + 1))
 
