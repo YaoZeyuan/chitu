@@ -27,6 +27,13 @@ load().then(init).catch(function (err) {
 function init(data) {
   var entry = data.entry;
 
+  // URL query 定位: ?s=<节点id>, 与 /plot 页的参数名保持一致, 便于互相跳转
+  var urlNodeId = null;
+  (function () {
+    var v = new URLSearchParams(location.search).get("s");
+    if (v && /^\d+$/.test(v)) urlNodeId = Number(v);
+  })();
+
   var nodeById = {};
   data.nodes.forEach(function (n) { nodeById[n.id] = n; });
 
@@ -102,7 +109,7 @@ function init(data) {
     chapter: { stroke: "#2b5d8a", fill: "#e8f0f7", label: "#1d3d59" },
     ending: { stroke: "#7a5a12", fill: "#f5ecd4", label: "#5a4310" },
     end: { stroke: "#a4322a", fill: "#fdecea", label: "#8a1f14" },   // 剧终(无后续节点, 红色便于区分)
-    normal: { stroke: "#c9c0ab", fill: "#fffdf8", label: "#2c2a26" },
+    normal: { stroke: "#a89b7d", fill: "#fffdf8", label: "#1d1b17", summary: "#635d50" },
     proxy: { stroke: "#2e7d32", fill: "#e8f5e9", label: "#1b5e20" }, // 跨章节跳转占位
   };
   var GREEN = "#2e7d32";
@@ -149,8 +156,8 @@ function init(data) {
       });
       group.addShape("text", {
         attrs: {
-          x: -w / 2 + 12, y: -h / 2 + (cfg.cardSummary ? 17 : h / 2 - (cfg.cardMeta ? 15 : 0)),
-          text: cfg.cardTitle, fontSize: 15, fontWeight: 500,
+          x: -w / 2 + 12, y: -h / 2 + (cfg.cardSummary ? 18 : h / 2 - (cfg.cardMeta ? 16 : 0)),
+          text: cfg.cardTitle, fontSize: 16, fontWeight: 600,
           fill: cfg.cardLabel, fontFamily: FONT,
           textAlign: "left", textBaseline: "middle", cursor: "pointer",
         },
@@ -159,8 +166,8 @@ function init(data) {
       if (cfg.cardSummary) {
         group.addShape("text", {
           attrs: {
-            x: -w / 2 + 12, y: -h / 2 + 38, text: cfg.cardSummary,
-            fontSize: 12, fill: cfg.cardSummaryColor || "#7a756a", fontFamily: FONT,
+            x: -w / 2 + 12, y: -h / 2 + 40, text: cfg.cardSummary,
+            fontSize: 13, fill: cfg.cardSummaryColor || "#7a756a", fontFamily: FONT,
             textAlign: "left", textBaseline: "middle", cursor: "pointer",
           },
           name: "card-summary",
@@ -170,7 +177,7 @@ function init(data) {
         group.addShape("text", {
           attrs: {
             x: -w / 2 + 12, y: h / 2 - 12, text: cfg.cardMeta,
-            fontSize: 11, fill: cfg.cardMetaColor || "#a09a8c", fontFamily: FONT,
+            fontSize: 12, fill: cfg.cardMetaColor || "#93897a", fontFamily: FONT,
             textAlign: "left", textBaseline: "middle", cursor: "pointer",
           },
           name: "card-meta",
@@ -222,7 +229,7 @@ function init(data) {
       cardStroke: c.stroke,
       cardLabel: c.label,
       cardSummaryColor: c.summary,
-      cardLw: type === "entry" || type === "chapter" ? 2 : 1.5,
+      cardLw: type === "end" || type === "ending" ? 2.5 : 2,
     };
   }
 
@@ -407,6 +414,7 @@ function init(data) {
     graph.findAll("edge", function () { return true; }).forEach(function (it) {
       graph.clearItemStates(it);
     });
+    syncUrl(null);
     panel.innerHTML = PANEL_EMPTY;
   }
 
@@ -441,8 +449,17 @@ function init(data) {
     });
   }
 
+  // URL 同步: 点击节点时把 ?s= 写入地址栏(不触发导航), 清除选择时移除
+  function syncUrl(id) {
+    try {
+      var url = location.pathname + (id != null ? "?s=" + id : "");
+      history.replaceState(null, "", url);
+    } catch (e) { /* ignore */ }
+  }
+
   function openPanel(id) {
     selectedId = id;
+    syncUrl(id);
     var raw = nodeById[id];
     if (!raw) return;
     highlight(id);
@@ -611,7 +628,9 @@ function init(data) {
     function afterLayout() {
       graph.off("afterlayout", afterLayout);
       graph.fitView(40);
-      // 只钳制上限: 大图(收起小节后节点链很长)按 fitView 缩放即可, 强行放大反而把节点顶出视口
+      // 可读下限: 章节视图 0.5(大图不强缩全图, 滚动浏览配合小地图, 需纵览可手动缩小);
+      // 全景视图以纵览结构为主, 只挡住 0.15 以下的极端缩小
+      var MIN_ZOOM = currentView.tree === "all" ? 0.15 : 0.5;
       var z = graph.getZoom();
       if (z > 1.2) graph.zoomTo(1.2);
       if (pendingFocus != null) {
@@ -629,9 +648,14 @@ function init(data) {
         if (start != null) {
           var sit = graph.findById(String(start));
           if (sit) {
-            // 先居中, 再把画布上移, 让起始节点停在视口顶部附近、下方剧情可见
             graph.focusItem(sit, false);
-            graph.translate(0, -graph.get("height") * 0.35);
+            if (graph.getZoom() < MIN_ZOOM) {
+              // 全图塞不下: 起始节点保持居中, 放大到可读缩放, 其余靠滚动漫游
+              graph.zoomTo(MIN_ZOOM, { x: graph.get("width") / 2, y: graph.get("height") / 2 });
+            } else {
+              // 缩放足够时才把画布上移, 让起始节点停在视口顶部附近
+              graph.translate(0, -graph.get("height") * 0.35);
+            }
           }
         }
       }
@@ -736,6 +760,17 @@ function init(data) {
   toc.addEventListener("change", function () {
     gotoNode(Number(toc.value));
   });
+
+  // 带 ?s= 访问: 切到对应章节树并定位该节点(必要时展开其所属小节)
+  if (urlNodeId != null && nodeById[urlNodeId]) {
+    var st0 = nodeById[urlNodeId].story;
+    if (st0 != null) expanded[st0] = true;
+    if (treeOf[urlNodeId] !== currentView.tree) {
+      var v0 = views.filter(function (x) { return x.tree === treeOf[urlNodeId]; })[0];
+      if (v0) { currentView = v0; updateTabs(); }
+    }
+    pendingFocus = urlNodeId;
+  }
 
   rebuild();
 }
