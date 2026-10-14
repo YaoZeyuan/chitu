@@ -387,6 +387,16 @@ def _blk_count(items):
                 end = end or e2
     return t, c, end
 
+def _first_text(items, limit=70):
+    """块内第一段纯文本(去html标签), 作为节点卡片的一句话摘要"""
+    for it in items:
+        if it["t"] == "text" and it.get("x"):
+            x = re.sub(r"<[^>]+>", "", it["x"])
+            x = re.sub(r"\s+", " ", x).strip()
+            if x:
+                return x[:limit]
+    return ""
+
 def collect_inline(items, src_id, container, base_parts, chain, synths):
     """递归遍历故事/分支块: 无跳转目标的选项创建图节点, 挂在 src_id 下。
     src_id: 图上边的起点(真实故事id或外层合成节点id);
@@ -411,6 +421,7 @@ def collect_inline(items, src_id, container, base_parts, chain, synths):
                     "base_parts": list(base_parts),
                     "chain": list(chain) + [o.get("txt", "")],
                     "end": end, "events": t, "choices": c,
+                    "summary": _first_text(blk),
                 })
                 collect_inline(blk, nid, container, base_parts,
                                chain + [o.get("txt", "")], synths)
@@ -655,7 +666,7 @@ def main():
             "id": s["id"], "name": name, "n": s["events"],
             "choices": s["choices"], "endings": 1 if s["end"] else 0,
             "synthetic": True, "story": s["story"], "page": s.get("page", s["story"]), "anchor": s["anchor"],
-            "dead": s["end"],
+            "dead": s["end"], "summary": s.get("summary", ""),
         })
 
     # 边去重: 不同选项组中的同名选项跳同一目标时只保留一条

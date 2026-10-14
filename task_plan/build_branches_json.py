@@ -42,6 +42,9 @@ def main():
             "events": n.get("n", 0),
             "summary": summary,
         })
+        # 合成/节拍节点自带摘要(块内第一段文本), 优先使用
+        if n.get("summary"):
+            nodes[-1]["summary"] = n["summary"]
         # 顶层直接结局数(剧终判定: 含结局但都是选项块内结局的不算剧终)
         if n.get("direct") is not None:
             nodes[-1]["direct"] = n["direct"]

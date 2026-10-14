@@ -80,7 +80,7 @@ function init(data) {
 
   /* ---------- 样式 ---------- */
   var COLORS = {
-    entry: { stroke: "#a4322a", fill: "#a4322a", label: "#ffffff" },
+    entry: { stroke: "#a4322a", fill: "#a4322a", label: "#ffffff", summary: "#f0d4cf" },
     chapter: { stroke: "#2b5d8a", fill: "#e8f0f7", label: "#1d3d59" },
     ending: { stroke: "#7a5a12", fill: "#f5ecd4", label: "#5a4310" },
     end: { stroke: "#a4322a", fill: "#fdecea", label: "#8a1f14" },   // 剧终(无后续节点, 红色便于区分)
@@ -115,26 +115,57 @@ function init(data) {
     return "normal";
   }
 
+  // 卡片节点: 标题 + 一句话摘要 + 统计, 不点开面板即可读懂剧情走向
+  G6.registerNode("card", {
+    draw: function (cfg, group) {
+      var w = cfg.cardW, h = cfg.cardH;
+      var rect = group.addShape("rect", {
+        attrs: {
+          x: -w / 2, y: -h / 2, width: w, height: h,
+          fill: cfg.cardFill, stroke: cfg.cardStroke,
+          lineWidth: cfg.cardLw || 1.5, radius: 10,
+          shadowBlur: 4, shadowColor: "rgba(60,50,30,0.12)",
+          cursor: "pointer",
+        },
+        name: "card-rect",
+      });
+      group.addShape("text", {
+        attrs: {
+          x: -w / 2 + 12, y: -h / 2 + (cfg.cardSummary ? 17 : h / 2 - (cfg.cardMeta ? 15 : 0)),
+          text: cfg.cardTitle, fontSize: 15, fontWeight: 500,
+          fill: cfg.cardLabel, fontFamily: FONT,
+          textAlign: "left", textBaseline: "middle", cursor: "pointer",
+        },
+        name: "card-title",
+      });
+      if (cfg.cardSummary) {
+        group.addShape("text", {
+          attrs: {
+            x: -w / 2 + 12, y: -h / 2 + 38, text: cfg.cardSummary,
+            fontSize: 12, fill: cfg.cardSummaryColor || "#7a756a", fontFamily: FONT,
+            textAlign: "left", textBaseline: "middle", cursor: "pointer",
+          },
+          name: "card-summary",
+        });
+      }
+      if (cfg.cardMeta) {
+        group.addShape("text", {
+          attrs: {
+            x: -w / 2 + 12, y: h / 2 - 12, text: cfg.cardMeta,
+            fontSize: 11, fill: cfg.cardMetaColor || "#a09a8c", fontFamily: FONT,
+            textAlign: "left", textBaseline: "middle", cursor: "pointer",
+          },
+          name: "card-meta",
+        });
+      }
+      return rect;
+    },
+  }, "single-node");
+
   function makeNode(id) {
     var n = nodeById[id];
     var type = nodeType(id);
     var c = COLORS[type];
-    // 关键选择节拍: 小号浅金矩形, 串出章节内部的剧情走势
-    if (n.beat) {
-      return {
-        id: String(id),
-        nodeType: type,
-        raw: n,
-        label: n.name,
-        size: [200, 46],
-        style: {
-          stroke: "#a08a3c", fill: "#fbf6e8", lineWidth: 1.5,
-          radius: 23,
-          shadowBlur: 4, shadowColor: "rgba(60,50,30,0.12)",
-        },
-        labelCfg: { style: { fill: "#6a5a1e", fontSize: 15, fontFamily: FONT } },
-      };
-    }
     // 条件判断: 菱形, 便于与剧情节点区分
     if (n.cond) {
       return {
@@ -151,20 +182,29 @@ function init(data) {
         labelCfg: { style: { fill: "#4a3a6a", fontSize: 15, fontFamily: FONT } },
       };
     }
+    // 其余全部为卡片: 标题 + 摘要 + 统计
+    var title = n.name + (storyHasKids[id] ? (isExpanded(id) ? " ▾" : " ▸") : "");
+    var summary = n.summary || "";
+    if (summary.length > 44) summary = summary.slice(0, 43) + "…";
+    var meta = [];
+    if (n.events) meta.push("事件 " + n.events);
+    if (n.choices) meta.push("选项 " + n.choices);
+    if (n.beat && !n.events && !n.choices) meta.push("抉择点");
+    var h = summary ? 72 : meta.length ? 56 : 44;
     return {
       id: String(id),
       nodeType: type,
       raw: n,
-      label: n.name + (storyHasKids[id] ? (isExpanded(id) ? " ▾" : " ▸") : ""),
-      style: {
-        stroke: c.stroke,
-        fill: c.fill,
-        lineWidth: type === "entry" || type === "chapter" ? 2 : 1,
-        radius: 9,
-        shadowBlur: 4,
-        shadowColor: "rgba(60,50,30,0.12)",
-      },
-      labelCfg: { style: { fill: c.label, fontSize: 20, fontFamily: FONT } },
+      type: "card",
+      cardW: 280, cardH: h,
+      cardTitle: title,
+      cardSummary: summary,
+      cardMeta: meta.join(" · "),
+      cardFill: c.fill,
+      cardStroke: c.stroke,
+      cardLabel: c.label,
+      cardSummaryColor: c.summary,
+      cardLw: type === "entry" || type === "chapter" ? 2 : 1.5,
     };
   }
 
@@ -220,64 +260,106 @@ function init(data) {
   var selectedId = null;
   var showAll = false;   // 全部展开/收起(按钮)
   var expanded = {};     // 用户点击展开的小节 story id -> true
+  var keyOnly = false;   // 只看关键抉择(分叉/汇合/条件/剧终, 线性推进压缩)
 
   // 节拍/合成/条件节点归属小节; 小节收起时折叠到小节节点上
   var storyHasKids = {}; // 有可展开剧情的小节
   data.nodes.forEach(function (n) {
     if ((n.synthetic || n.beat || n.cond) && n.story != null) storyHasKids[n.story] = true;
   });
-  function isExpanded(sid) { return showAll || expanded[sid]; }
+  function isExpanded(sid) { return showAll || expanded[sid] || keyOnly; }
   function collapseId(id) {
     var n = nodeById[id];
     if (n && (n.synthetic || n.beat || n.cond) && n.story != null && !isExpanded(n.story)) return n.story;
     return id;
   }
 
-  function buildView(v) {
+  // 关键抉择视图: 只保留 章节入口/小节锚点(有下挂剧情)/条件菱形/剧终,
+  // 其余具体剧情节点压缩成直达边(沿途带上第一个选项文字), 仿 articy:draft 的分层 Flow
+  function computeKeyEdges(v, keep) {
     var inTree = function (id) { return v.tree === "all" || treeOf[id] === v.tree; };
-    var viewCount = 0;
-    data.nodes.forEach(function (n) { if (inTree(n.id)) viewCount++; });
-    // 节点数超过 50 的章节树默认收起小节细节, 点击小节或按钮展开
-    var nodes = [], viewEdges = [];
-    var proxyAdded = {};
-    curNodeIds = {};
-    curEdges = [];
+    var key = {};
     data.nodes.forEach(function (n) {
       if (!inTree(n.id)) return;
-      curNodeIds[n.id] = true;
+      if (n.id === entry || chapterSet[n.id] || n.cond || isDeadEnd(n.id)
+          || storyHasKids[n.id]) key[n.id] = true;
+    });
+    Object.keys(key).forEach(function (k) { keep[Number(k)] = true; });
+    var adj = {};
+    edges.forEach(function (e) {
+      if (inTree(e.f) && inTree(e.t)) (adj[e.f] = adj[e.f] || []).push(e);
+    });
+    var out = [];
+    Object.keys(key).forEach(function (uStr) {
+      var u = Number(uStr);
+      var seen = {}; seen[u] = true;
+      var queue = [{ id: u, l: "" }];
+      while (queue.length) {
+        var cur = queue.shift();
+        (adj[cur.id] || []).forEach(function (e) {
+          if (seen[e.t]) return;
+          seen[e.t] = true;
+          var l = cur.l || e.l;
+          if (key[e.t]) out.push({ f: u, t: e.t, l: l });
+          else queue.push({ id: e.t, l: l });
+        });
+      }
+    });
+    return out;
+  }
+
+  function buildView(v) {
+    var inTree = function (id) { return v.tree === "all" || treeOf[id] === v.tree; };
+    var keep = {};   // 视图内真实节点id
+    var edgeList;
+    if (keyOnly) {
+      edgeList = computeKeyEdges(v, keep);
+    } else {
+      data.nodes.forEach(function (n) { if (inTree(n.id)) keep[n.id] = true; });
+      edgeList = edges;
+    }
+    var nodes = [], viewEdges = [];
+    var proxyAdded = {};
+    curNodeIds = keep;
+    curEdges = [];
+    data.nodes.forEach(function (n) {
+      if (!keep[n.id]) return;
       // 节拍/分支/条件节点仅在其所属小节展开时显示
       var collapse = (n.synthetic || n.beat || n.cond) && !isExpanded(n.story);
       if (!collapse) nodes.push(makeNode(n.id));
     });
     // 边端点折叠: 收起小节的节拍/分支/条件边重挂到小节节点; 去重、丢弃自环
     var pairTotal = {}, pairIdx = {}, seenEdge = {};
-    edges.forEach(function (e) {
+    edgeList.forEach(function (e0) {
+      var e = { f: e0.f, t: e0.t, l: e0.l || "" };
       var f = collapseId(e.f), t = collapseId(e.t);
       if (f === t) return;
-      var sk = f + "-" + t + "-" + (e.l || "");
+      var sk = f + "-" + t + "-" + e.l;
       if (seenEdge[sk]) return;
       seenEdge[sk] = 1;
       var k = f + "-" + t;
       pairTotal[k] = (pairTotal[k] || 0) + 1;
     });
-    edges.forEach(function (e) {
+    edgeList.forEach(function (e0) {
+      var e = { f: e0.f, t: e0.t, l: e0.l || "" };
       var f = collapseId(e.f), t = collapseId(e.t);
       if (f === t) return;
-      var sk = f + "-" + t + "-" + (e.l || "");
+      var sk = f + "-" + t + "-" + e.l;
       if (!seenEdge[sk]) return;
       seenEdge[sk] = 0;  // 消费标记, 重复边只取一条
       var k = f + "-" + t;
       var pi = pairIdx[k] || 0;
       pairIdx[k] = pi + 1;
-      var m = { f: f, t: t, l: e.l || "" };
+      var m = { f: f, t: t, l: e.l };
       curEdges.push(m);
       viewEdges.push(makeEdge(m, false, null, pi, pairTotal[k]));
     });
     // 跨树边(章节树视图内以占位节点表示)
-    edges.forEach(function (e) {
+    edgeList.forEach(function (e0) {
+      var e = { f: e0.f, t: e0.t, l: e0.l || "" };
       var f = collapseId(e.f), t = collapseId(e.t);
       if (f === t || !inTree(f) || inTree(t)) return;
-      var m = { f: f, t: t, l: e.l || "" };
+      var m = { f: f, t: t, l: e.l };
       curEdges.push(m);
       if (v.tree === "all") {
         viewEdges.push(makeEdge(m, true));
@@ -566,6 +648,7 @@ function init(data) {
 
     graph.render();
     updateDetailBtn();
+    updateKeyBtn();
     window.__graph = graph;
   }
 
@@ -578,6 +661,18 @@ function init(data) {
   }
   if (detailBtn) detailBtn.addEventListener("click", function () {
     showAll = !showAll;
+    rebuild();
+  });
+
+  // "只看关键抉择" 切换按钮
+  var keyBtn = document.getElementById("toggle-key");
+  function updateKeyBtn() {
+    if (!keyBtn) return;
+    keyBtn.textContent = keyOnly ? "显示完整分支" : "只看关键抉择";
+    keyBtn.classList.toggle("active", keyOnly);
+  }
+  if (keyBtn) keyBtn.addEventListener("click", function () {
+    keyOnly = !keyOnly;
     rebuild();
   });
 
