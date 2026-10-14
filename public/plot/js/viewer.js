@@ -212,8 +212,10 @@
           var box = el("div", "choice-box item");
           box.id = it.opts[0] && it.opts[0].id;
           box.appendChild(el("div", "cb-title", "◆ 选 项 ◆"));
-          it.opts.forEach(function (o) {
+          it.opts.forEach(function (o, oi) {
             var opt = el("div", "opt");
+            // 分支图内联节点锚点定位: 首个选项锚点由 box.id 承担, 其余各自挂 id
+            if (oi > 0 && o.id) opt.id = o.id;
             var head = el("div", "opt-head");
             var ob = el("button", "opt-btn", esc(o.txt || "(空选项)"));
             ob.type = "button";

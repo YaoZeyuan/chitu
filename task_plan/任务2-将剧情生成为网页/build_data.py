@@ -347,8 +347,14 @@ def collect_inline(items, src_id, container, base_parts, chain, synths):
         for o in it["opts"]:
             blk = o.get("items") or []
             if o.get("to") is None and blk:
-                nid = SYNTH_BASE + len(synths) + 1
                 t, c, end = _blk_count(blk)
+                if c == 0 and not end:
+                    # 纯信息展示块(只是几段对话, 无后续选项也无结局): 不上图,
+                    # 其嵌套选项组仍递归处理, chain 带上本选项文本保留命名上下文
+                    collect_inline(blk, src_id, container, base_parts,
+                                   chain + [o.get("txt", "")], synths)
+                    continue
+                nid = SYNTH_BASE + len(synths) + 1
                 synths.append({
                     "id": nid, "src": src_id, "story": container,
                     "anchor": o["id"], "txt": o.get("txt", ""),
@@ -465,6 +471,8 @@ def main():
             if parts and parts[0].startswith(cap + "-"):
                 parts[0] = parts[0][len(cap) + 1:]
                 break
+        if parts and parts[0] == ch:
+            parts = parts[1:]  # 大节点名即章节名, 避免重复
         name = "-".join([ch] + parts + s["chain"])
         seen_names[name] = seen_names.get(name, 0) + 1
         if seen_names[name] > 1:

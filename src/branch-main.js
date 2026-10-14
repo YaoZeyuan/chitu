@@ -83,7 +83,7 @@ function init(data) {
     entry: { stroke: "#a4322a", fill: "#a4322a", label: "#ffffff" },
     chapter: { stroke: "#2b5d8a", fill: "#e8f0f7", label: "#1d3d59" },
     ending: { stroke: "#7a5a12", fill: "#f5ecd4", label: "#5a4310" },
-    end: { stroke: "#7a4a9a", fill: "#f3ecfa", label: "#4a2a6a" },   // 剧情结束(无后续节点)
+    end: { stroke: "#a4322a", fill: "#fdecea", label: "#8a1f14" },   // 剧终(无后续节点, 红色便于区分)
     normal: { stroke: "#c9c0ab", fill: "#fffdf8", label: "#2c2a26" },
     proxy: { stroke: "#2e7d32", fill: "#e8f5e9", label: "#1b5e20" }, // 跨章节跳转占位
   };
@@ -96,10 +96,16 @@ function init(data) {
     if (idByName[name] != null) chapterSet[idByName[name]] = true;
   });
 
+  // 是否有跨章节树的出边(如章节尾跳转到下一章)
+  function jumpsCross(id) {
+    return (outMap[id] || []).some(function (e) { return treeOf[e.t] !== treeOf[id]; });
+  }
+
   function nodeType(id) {
     if (id === entry) return "entry";
-    if (terminal[id]) return "end";
     if (chapterSet[id]) return "chapter";
+    // 剧终: 含结局标记且不跳转到下一章 -> 红色
+    if (nodeById[id].endings > 0 && !jumpsCross(id)) return "end";
     if (nodeById[id].endings > 0) return "ending";
     return "normal";
   }
@@ -261,14 +267,19 @@ function init(data) {
     h += '<span class="tags">';
     if (id === entry) h += '<em class="tag tag-entry">入口</em>';
     if (chapterSet[id]) h += '<em class="tag tag-chapter">章节</em>';
-    if (terminal[id]) h += '<em class="tag tag-ending">剧情结束</em>';
+    if (raw.synthetic) h += '<em class="tag tag-chapter">分支内容</em>';
+    if (raw.endings > 0 && !jumpsCross(id)) h += '<em class="tag tag-ending">剧终</em>';
     else if (raw.endings > 0) h += '<em class="tag tag-ending">含结局标记</em>';
     h += "</span>";
     h += '<button class="btn" id="close-panel">关闭</button></div>';
     h += '<div class="panel-body"><div class="panel-info">';
     h += '<p class="meta">事件 ' + raw.events + " · 选项 " + raw.choices + " · 结局标记 " + raw.endings + "</p>";
     if (raw.summary) h += '<p class="summary">' + esc(raw.summary) + "…</p>";
-    h += '<p><a class="btn" href="/plot?s=' + id + '">进入速览 →</a></p>';
+    // 内联分支节点: 跳到其选项所在页面并锚点定位到该选项
+    var viewUrl = raw.synthetic
+      ? "/plot?s=" + raw.story + "#" + (raw.anchor || "")
+      : "/plot?s=" + id;
+    h += '<p><a class="btn" href="' + viewUrl + '">进入速览 →</a></p>';
     h += "</div>";
 
     // 来源（左）与去向（右）横向排列; 跨树目标标注 ↗, 点击后切换章节树
@@ -325,6 +336,24 @@ function init(data) {
   }
 
   var pendingFocus = null;
+
+  // 章节树起始节点: 该树内无同树入边的节点(优先章节标题节点本身)
+  function treeStart(tree) {
+    if (tree === "all" || tree == null) return null;
+    var hasIn = {};
+    edges.forEach(function (e) {
+      if (treeOf[e.f] === tree && treeOf[e.t] === tree) hasIn[e.t] = true;
+    });
+    var cands = data.nodes.filter(function (n) {
+      return treeOf[n.id] === tree && !hasIn[n.id];
+    });
+    if (!cands.length) return null;
+    cands.sort(function (a, b) {
+      var ca = chapterSet[a.id] ? 0 : 1, cb = chapterSet[b.id] ? 0 : 1;
+      return ca - cb || a.id - b.id;
+    });
+    return cands[0].id;
+  }
 
   function rebuild() {
     if (graph) { graph.destroy(); graph = null; }
@@ -397,6 +426,17 @@ function init(data) {
         if (it) graph.focusItem(it, false);
         openPanel(pendingFocus);
         pendingFocus = null;
+      } else {
+        // 无指定焦点时定位到章节起始节点, 免去每次切换后手工挪视图
+        var start = treeStart(currentView.tree);
+        if (start != null) {
+          var sit = graph.findById(String(start));
+          if (sit) {
+            // 先居中, 再把画布下移, 让起始节点停在视口顶部附近、下方剧情可见
+            graph.focusItem(sit, false);
+            graph.translate(0, graph.get("height") * 0.35);
+          }
+        }
       }
     }
     graph.on("afterlayout", afterLayout);

@@ -36,12 +36,20 @@ def main():
         nodes.append({
             "id": n["id"],
             "name": n["name"],
-            "chapter": bool(re.match(r"^第.+[章话]", n["name"])),
+            "chapter": bool(n.get("synthetic")) is False and bool(re.match(r"^第.+[章话]", n["name"])),
             "choices": n.get("choices", 0),
             "endings": n.get("endings", 0),
             "events": n.get("n", 0),
             "summary": summary,
         })
+        # 内联分支节点(选项无跳转目标但带剧情内容): 透传附加字段
+        if n.get("synthetic"):
+            nodes[-1].update({
+                "synthetic": True,
+                "story": n.get("story"),
+                "anchor": n.get("anchor", ""),
+                "dead": bool(n.get("dead")),
+            })
 
     edges = [{"f": e["f"], "t": e["t"], "l": e.get("l", "")} for e in graph["edges"]]
 
