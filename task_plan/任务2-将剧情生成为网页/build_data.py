@@ -476,7 +476,7 @@ def main():
             collect_inline(st["items"], sid, sid, [st["name"]], [], synths)
     for c in conds:
         edges.append({"f": c["src"], "t": c["id"], "i": c.get("anchor", ""), "l": ""})
-        edges.append({"f": c["id"], "t": c["to"], "i": "", "l": ""})
+        edges.append({"f": c["id"], "t": c["to"], "i": "", "l": "成立"})
     for s in synths:
         edges.append({"f": s["src"], "t": s["id"], "i": s["anchor"], "l": s["txt"][:20]})
     if conds:
@@ -580,6 +580,18 @@ def main():
         if target is None:
             target = s["story"]
         edges.append({"f": s["id"], "t": target, "i": "", "l": ""})
+    # 条件菱形补全"不成立"走向: 条件之后未跳转则继续主线,
+    # 连到条件之后的下一个节拍(无则连回章节节点), 与"成立"跳转边并列
+    for c in conds:
+        key = _anchor_key(c.get("anchor"))
+        target = None
+        if key:
+            nxt = [b for b in beats_by_sid.get(key[0], []) if b[0] > key[1]]
+            if nxt:
+                target = nxt[0][1]
+        if target is None:
+            target = c["src"]
+        edges.append({"f": c["id"], "t": target, "i": "", "l": "不成立"})
     if beats:
         print("  关键选择节拍: %d 个(id %d+)" % (len(set(beat_of_anchor.values())), BEAT_BASE + 1))
 
