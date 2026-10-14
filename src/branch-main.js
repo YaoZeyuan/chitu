@@ -169,21 +169,29 @@ function init(data) {
     };
   }
 
-  function makeEdge(e, cross, proxyId) {
+  function makeEdge(e, cross, proxyId, pi, pn) {
     var m = { source: String(e.f), target: String(proxyId || e.t) };
+    // 同对节点间的多条平行边(不同选项走向同一去向)用 offset 扇形分开, 避免重叠成一条
+    var off = pn > 1 ? (pi - (pn - 1) / 2) * 14 : 0;
+    m.style = {
+      stroke: BLUE, lineWidth: 2, radius: 16, offset: off,
+      // G6.Arrow.triangle 是函数, 须传路径串, 直接传函数会导致 Path 构造崩溃
+      endArrow: { path: "M 0,0 L 12,6 L 0,12 Z", fill: BLUE },
+    };
     if (e.l) m.label = e.l.length > 14 ? e.l.slice(0, 13) + "…" : e.l;
+    m.labelCfg = {
+      autoRotate: true,
+      style: {
+        fill: "#8a5a11", fontSize: 14,
+        background: { fill: "#fffdf8", padding: [3, 6, 3, 6], radius: 4 },
+      },
+    };
     if (cross) {
-      m.style = {
-        stroke: GREEN, lineWidth: 2, radius: 16,
-        endArrow: { path: "M 0,0 L 12,6 L 0,12 Z", fill: GREEN },
-      };
-      m.labelCfg = {
-        autoRotate: true,
-        style: {
-          fill: "#1b5e20", fontSize: 14,
-          background: { fill: "#e8f5e9", padding: [3, 6, 3, 6], radius: 4 },
-        },
-      };
+      // 跨章节跳转: 绿色, 保留平行边 offset
+      m.style.stroke = GREEN;
+      m.style.endArrow = { path: "M 0,0 L 12,6 L 0,12 Z", fill: GREEN };
+      m.labelCfg.style.fill = "#1b5e20";
+      m.labelCfg.style.background = { fill: "#e8f5e9", padding: [3, 6, 3, 6], radius: 4 };
     }
     return m;
   }
@@ -206,10 +214,21 @@ function init(data) {
       curNodeIds[n.id] = true;
       nodes.push(makeNode(n.id));
     });
+    // 统计视图内同对节点的平行边数量, 供 makeEdge 分配扇形偏移
+    var pairTotal = {}, pairIdx = {};
     edges.forEach(function (e) {
       if (inTree(e.f) && inTree(e.t)) {
+        var k = e.f + "-" + e.t;
+        pairTotal[k] = (pairTotal[k] || 0) + 1;
+      }
+    });
+    edges.forEach(function (e) {
+      if (inTree(e.f) && inTree(e.t)) {
+        var k = e.f + "-" + e.t;
+        var pi = pairIdx[k] || 0;
+        pairIdx[k] = pi + 1;
         curEdges.push(e);
-        viewEdges.push(makeEdge(e, false));
+        viewEdges.push(makeEdge(e, false, null, pi, pairTotal[k]));
       } else if (inTree(e.f)) {
         curEdges.push(e);
         if (v.tree === "all") {
@@ -225,7 +244,7 @@ function init(data) {
 
   /* ---------- 面板 ---------- */
   var panel = document.getElementById("panel");
-  var PANEL_EMPTY = '<div class="panel-empty">点击图中任意章节节点<br>查看详情与跳转关系<br><br>绿色连线 = 跳转其他章节<br>紫色节点 = 剧情结束(无后续)</div>';
+  var PANEL_EMPTY = '<div class="panel-empty">点击图中任意章节节点<br>查看详情与跳转关系<br><br>红色节点 = 剧终 · 菱形 = 条件判断<br>绿色连线 = 跳转其他章节<br>边上文字 = 触发跳转的选项</div>';
 
   function esc(s) {
     return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
@@ -312,7 +331,7 @@ function init(data) {
         var other = dir === "out" ? e.t : e.f;
         var cross = treeOf[other] !== currentView.tree && currentView.tree !== "all";
         s += '<li><a href="#" data-goto="' + other + '">' + esc(nodeById[other].name) + (cross ? " ↗" : "") + "</a>";
-        if (dir === "out" && e.l) s += ' <span class="choice">【' + esc(e.l) + "】</span>";
+        if (e.l) s += ' <span class="choice">【' + esc(e.l) + "】</span>";
         s += "</li>";
       });
       if (!list.length) s += '<li class="none">无</li>';
