@@ -141,24 +141,36 @@ def _clear_used(items):
             for o in it["opts"]:
                 _clear_used(o.get("items") or [])
 
+def _has_nav(items):
+    """块内是否含跳转或选项(点击后有后续导航)。
+    纯展示块(仅文本/图片/音乐/结局)无论多深都不拆分, 原地展示。"""
+    for it in items:
+        if it["t"] in ("jump", "choice"):
+            return True
+    return False
+
 def split_deep(items, depth, sid, story_name, stories_out, extract_ids,
-               counter, extracted_blocks):
-    """递归遍历 items, 把深度 > SPLIT_DEPTH 的选项块抽成独立故事节点。
+               counter, extracted_blocks, dup_names):
+    """递归遍历 items, 把深度 > SPLIT_DEPTH 且含后续导航的选项块抽成独立故事节点。
 
     depth: 当前 items 的嵌套深度(顶层=1), choice 选项块深度 = depth+1。
     被抽出的块整体搬入新节点(其中更深的嵌套随节点整体下降, 无需再拆),
-    原选项就地替换为指向新节点的跳转(o.to=nid, o.items 清空, o.split 标记)。"""
+    原选项就地替换为指向新节点的跳转(o.to=nid, o.items 清空, o.split 标记)。
+    命名: 父节点名-选项文本 (父节点为章节时即 章节名-选项, 嵌套再拆则为
+    章节-上级选项-选项 的链式格式); 重名追加 -1/-2/-3 序号。"""
     for it in items:
         if it["t"] != "choice":
             continue
         for o in it["opts"]:
             blk = o.get("items") or []
-            if depth + 1 > SPLIT_DEPTH and blk:
+            if depth + 1 > SPLIT_DEPTH and blk and _has_nav(blk):
                 counter[0] += 1
                 nid = SPLIT_ID_BASE + counter[0]
-                name = story_name + "·" + (o.get("txt") or "选项")
-                if name in extract_names(stories_out):
-                    name += "（%d）" % nid
+                name = story_name + "-" + (o.get("txt") or "选项")
+                dup = dup_names.get(name, 0)
+                dup_names[name] = dup + 1
+                if dup:
+                    name += "-%d" % dup
                 ch, en = _count_items(blk)
                 _clear_used(blk)
                 stories_out[str(nid)] = {
@@ -172,7 +184,7 @@ def split_deep(items, depth, sid, story_name, stories_out, extract_ids,
                 o["split"] = True
             else:
                 split_deep(blk, depth + 1, sid, story_name, stories_out,
-                           extract_ids, counter, extracted_blocks)
+                           extract_ids, counter, extracted_blocks, dup_names)
 
 def extract_names(stories_out):
     return {v["name"] for v in stories_out.values() if v.get("split")}
@@ -301,6 +313,54 @@ def find_first_jump(items):
                     return r
     return None, ""
 
+# ---------------------------------------------------------------- 内联分支图节点
+# 选项无跳转目标但带剧情内容(死局结局/汇回主线的分支内容): 为其创建图节点,
+# 命名 "章节-大节点-选项文本"(重名加 -1/-2), 死局块标 dead 供前端紫色标记
+CHAPTERS = ["序章", "第一章", "第二章", "第三章", "第四章", "第五章", "第六章"]
+SYNTH_BASE = 2000  # 内联分支节点 id 从 2001 起(1000+ 已被拆分节点占用)
+
+def _blk_count(items):
+    """统计块内 (文本数, 选项数, 是否含结局标记)"""
+    t = c = 0
+    end = False
+    for it in items:
+        if it["t"] == "text":
+            t += 1
+        elif it["t"] == "end":
+            end = True
+        elif it["t"] == "choice":
+            for o in it["opts"]:
+                c += 1
+                t2, c2, e2 = _blk_count(o.get("items") or [])
+                t += t2
+                c += c2
+                end = end or e2
+    return t, c, end
+
+def collect_inline(items, src_id, container, base_parts, chain, synths):
+    """递归遍历故事/分支块: 无跳转目标的选项创建图节点, 挂在 src_id 下。
+    src_id: 图上边的起点(真实故事id或外层合成节点id);
+    container: 选项框所在页面的故事id(用于速览锚点链接)。"""
+    for it in items:
+        if it["t"] != "choice":
+            continue
+        for o in it["opts"]:
+            blk = o.get("items") or []
+            if o.get("to") is None and blk:
+                nid = SYNTH_BASE + len(synths) + 1
+                t, c, end = _blk_count(blk)
+                synths.append({
+                    "id": nid, "src": src_id, "story": container,
+                    "anchor": o["id"], "txt": o.get("txt", ""),
+                    "base_parts": list(base_parts),
+                    "chain": list(chain) + [o.get("txt", "")],
+                    "end": end, "events": t, "choices": c,
+                })
+                collect_inline(blk, nid, container, base_parts,
+                               chain + [o.get("txt", "")], synths)
+            else:
+                collect_inline(blk, src_id, container, base_parts, chain, synths)
+
 # ---------------------------------------------------------------- 主流程
 def main():
     data = json.load(open(GAME_JSON, encoding="utf-8"))
@@ -333,12 +393,7 @@ def main():
     extract_ids = set()
     counter = [0]
     extracted_blocks = []  # (原故事id, 被抽出的块)
-    def _root_name(sid):
-        """拆分节点的命名取根章节名, 避免『支线·支线·支线』式长名"""
-        v = stories_out[str(sid)]
-        while v.get("split"):
-            v = stories_out[str(v["parent"])]
-        return v["name"]
+    dup_names = {}         # 拆分节点重名计数 → -1/-2/-3
     while True:
         before = counter[0]
         for sid_s in list(stories_out.keys()):
@@ -346,8 +401,8 @@ def main():
             if sid in UTILITY:
                 continue
             split_deep(stories_out[sid_s]["items"], 1, sid,
-                       _root_name(sid), stories_out,
-                       extract_ids, counter, extracted_blocks)
+                       stories_out[sid_s]["name"], stories_out,
+                       extract_ids, counter, extracted_blocks, dup_names)
         if counter[0] == before:
             break
 
@@ -364,6 +419,63 @@ def main():
     if extract_ids:
         nodes_split = sum(1 for v in stories_out.values() if v.get("split"))
         print("  深嵌套拆分: %d 个选项块 -> 独立节点(id %d+)" % (nodes_split, SPLIT_ID_BASE + 1))
+
+    # 内联分支节点: 无跳转目标的选项块(死局结局/汇回主线的分支内容)上图
+    synths = []
+    for sid_s, st in stories_out.items():
+        sid = int(sid_s)
+        if sid in UTILITY:
+            continue
+        if st.get("split"):
+            # 拆分节点不是图节点: 边挂在原故事下, 锚点指向拆分节点页
+            collect_inline(st["items"], st["parent"], sid, [st["name"]], [], synths)
+        else:
+            collect_inline(st["items"], sid, sid, [st["name"]], [], synths)
+    for s in synths:
+        edges.append({"f": s["src"], "t": s["id"], "i": s["anchor"], "l": s["txt"][:20]})
+    if synths:
+        print("  内联分支节点: %d 个(id %d+)" % (len(synths), SYNTH_BASE + 1))
+
+    # 合成节点命名: "章节-大节点-选项链" (重名 -1/-2/-3)
+    # 章节归属: 沿最终边从入口 DFS, 途经章节名节点时切换当前章节
+    adj = {}
+    for e in edges:
+        adj.setdefault(e["f"], []).append(e["t"])
+    real_names = {int(k): v["name"] for k, v in stories_out.items() if not v.get("split")}
+    ch_of = {}
+    chapter_set = set(CHAPTERS[1:])
+    stack = [(1, "序章")]
+    seen = set()
+    while stack:
+        nid, ch = stack.pop()
+        if nid in seen:
+            continue
+        seen.add(nid)
+        ch_of[nid] = ch
+        cur = real_names[nid] if real_names.get(nid) in chapter_set else ch
+        for t in reversed(adj.get(nid, [])):
+            if t not in seen:
+                stack.append((t, cur))
+    seen_names = {}
+    for s in synths:
+        ch = ch_of.get(s["src"], "序章")
+        parts = list(s["base_parts"])
+        # 拆分节点名自带章节前缀, 去重避免 "第五章-第五章-..."
+        for cap in CHAPTERS:
+            if parts and parts[0].startswith(cap + "-"):
+                parts[0] = parts[0][len(cap) + 1:]
+                break
+        name = "-".join([ch] + parts + s["chain"])
+        seen_names[name] = seen_names.get(name, 0) + 1
+        if seen_names[name] > 1:
+            name += "-%d" % (seen_names[name] - 1)
+        s["name"] = name
+        nodes.append({
+            "id": s["id"], "name": name, "n": s["events"],
+            "choices": s["choices"], "endings": 1 if s["end"] else 0,
+            "synthetic": True, "story": s["story"], "anchor": s["anchor"],
+            "dead": s["end"],
+        })
 
     # 边去重: 不同选项组中的同名选项跳同一目标时只保留一条
     seen_edge = set()

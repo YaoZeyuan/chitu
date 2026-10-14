@@ -367,7 +367,33 @@
   })();
 
   /* ---------------- TOC ---------------- */
-  // 按剧情出现先后排序, 前缀序号方便定位
+  // 按剧情出现先后排序, 前缀序号方便定位;
+  // 拆分支线节点作为所属章节的子目录缩进展示, 方便主动跳转
+  var CHILDREN = {};
+  Object.keys(D.stories).forEach(function (k) {
+    var s = D.stories[k];
+    if (s.split && D.stories[s.parent]) {
+      (CHILDREN[s.parent] = CHILDREN[s.parent] || []).push(Number(k));
+    }
+  });
+  Object.keys(CHILDREN).forEach(function (k) {
+    CHILDREN[k].sort(function (a, b) { return a - b; });
+  });
+  function addSplitOptions(chapterId, prefix, chapterName) {
+    (CHILDREN[chapterId] || []).forEach(function (cid) {
+      var s = D.stories[cid];
+      var o = document.createElement("option");
+      o.value = cid;
+      // 名称去掉与章节重复的前缀, 缩进区分子目录
+      var nm = s.name;
+      if (chapterName && nm.indexOf(chapterName + "-") === 0) {
+        nm = nm.slice(chapterName.length + 1);
+      }
+      o.textContent = prefix + nm + "（" + cid + "）";
+      toc.appendChild(o);
+      addSplitOptions(cid, prefix + "　　", s.name);
+    });
+  }
   ORDER.slice()
     .sort(function (a, b) { return PLOT_ORDER.indexOf(a) - PLOT_ORDER.indexOf(b); })
     .forEach(function (id, idx) {
@@ -376,6 +402,7 @@
       o.value = id;
       o.textContent = (idx + 1) + ". " + s.name + "（" + id + "）";
       toc.appendChild(o);
+      addSplitOptions(id, "　└ ", s.name);
     });
   toc.addEventListener("change", function () { gotoStory(parseInt(toc.value, 10)); });
 
