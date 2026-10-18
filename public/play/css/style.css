@@ -8,30 +8,31 @@
   min-height: calc(100vh - 57px);
   padding: 0 12px;
 }
-/* 左栏: 场景画幅, 吸顶固定 */
+/* 左栏: 场景画幅, 吸顶固定, 与 /plot 一致恒为 16:9 */
 #stage-wrap {
   position: sticky;
   top: 57px;
-  width: min(46%, 560px);
+  width: min(48%, 620px);
   flex-shrink: 0;
 }
 #stage-wrap.hidden-stage { display: none; }
 #stage {
   position: relative;
-  height: calc(100vh - 57px - 24px);
-  max-height: 760px;
+  aspect-ratio: 16 / 9;
   width: 100%;
   margin: 12px 0 0;
   border-radius: 10px;
   overflow: hidden;
-  background: #1c1a17 center/cover no-repeat;
-  box-shadow: 0 2px 10px rgba(40, 30, 10, .18);
+  background: #1c1a17;
+  background-size: 100% 100%;
+  background-position: center;
+  border: 1px solid var(--line);
+  box-shadow: 0 4px 14px rgba(50, 40, 20, .14);
 }
-#stage:empty { visibility: hidden; height: 0; margin: 0; }
+#stage:empty { visibility: hidden; margin: 0; border: none; box-shadow: none; }
 #stage .spic {
-  position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);
-  height: 100%; width: auto; max-width: 100%;
-  object-fit: contain;
+  position: absolute; inset: 0;
+  width: 100%; height: 100%; display: block;
 }
 #stage .sbg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 
@@ -49,7 +50,7 @@
 @media (max-width: 860px) {
   #wrap { display: block; padding: 0; }
   #stage-wrap { position: relative; top: 0; width: 100%; }
-  #stage { height: clamp(220px, 40vh, 400px); max-width: 860px; margin: 12px auto 0; }
+  #stage { max-width: 860px; margin: 12px auto 0; }
 }
 #flow p.nar, #flow p.dlg {
   margin: 0 0 14px;
