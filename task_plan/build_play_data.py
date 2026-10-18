@@ -157,7 +157,10 @@ def parse_range(evs, lo, hi, stats):
         elif t in ("move_pic", "note", "wait", "click_wait", "shake", "flash",
                    "weather", "op", "stop_se", "bgs_fadeout"):
             i += 1  # 纯表现层/系统事件, Play 模式跳过
-        elif t in ("merge", "choice", "loop_break", "loop_end"):
+        elif t == "loop_break":
+            items.append({"t": "break"})
+            i += 1
+        elif t in ("merge", "choice", "loop_end"):
             i += 1  # 由上层消费, 防御性略过
         else:
             i += 1
@@ -165,10 +168,18 @@ def parse_range(evs, lo, hi, stats):
 
 
 def parse_loop(body_evs, stats):
-    """循环块: 含 menu_label 则解析为调查面板, 否则按普通序列执行一次。"""
+    """循环块: menu_label→调查面板; choice_prompt→可重复问答菜单(选完跳回菜单头,
+    由退出项体内的条件+loop_break 决定能否离开); 否则普通序列执行一次。"""
     has_menu = any(e["type"] == "menu_label" for e in body_evs)
-    if not has_menu:
+    cp = next((k for k, e in enumerate(body_evs) if e["type"] == "choice_prompt"), None)
+    if not has_menu and cp is None:
         return {"t": "seq", "body": parse_range(body_evs, 0, len(body_evs), stats)}
+    if has_menu:
+        return _parse_menu_label(body_evs, stats)
+    return _parse_ask_menu(body_evs, cp, stats)
+
+
+def _parse_menu_label(body_evs, stats):
     # 调查: 前导段 + 各 menu_label 点
     pre = []
     k = 0
@@ -197,7 +208,50 @@ def parse_loop(body_evs, stats):
         else:
             # 点间杂项(条件尾等)忽略——调查点内容已覆盖主要文本
             k += 1
-    return {"t": "invest", "pre": parse_range(pre, 0, len(pre), stats), "points": points}
+    stats["invest"] += 1
+    return {"t": "invest", "pre": parse_range(pre, 0, len(pre), stats), "points": points, "exit": None}
+
+
+def _has_loop_break(items):
+    for it in items:
+        if it["t"] == "break":
+            return True
+        for kk in ("body", "pre"):
+            if it.get(kk) and _has_loop_break(it[kk]):
+                return True
+        for b in it.get("branches", []):
+            if _has_loop_break(b.get("body") or []):
+                return True
+    return False
+
+
+def _parse_ask_menu(body_evs, cp, stats):
+    """choice_prompt 菜单循环 → invest 节点。
+    退出项 = 体内含 loop_break 的选项(原游戏的'我没有问题了'), 其条件门控原样保留。"""
+    pre = parse_range(body_evs, 0, cp, stats)
+    cp_ev = body_evs[cp]
+    k = cp + 1
+    opts = []
+    for _k in range(len(cp_ev["opts"])):
+        if k >= len(body_evs) or body_evs[k]["type"] != "choice":
+            break
+        lab = body_evs[k]
+        anchor = "c%s-%s" % (lab.get("sid", ""), lab.get("i"))
+        j = k + 1
+        while j < len(body_evs) and body_evs[j]["ind"] > lab["ind"]:
+            j += 1
+        body = parse_range(body_evs, k + 1, j, stats)
+        opts.append({"txt": lab.get("text", ""), "body": body, "a": anchor})
+        k = j
+    exit_opt = None
+    points = []
+    for o in opts:
+        if exit_opt is None and _has_loop_break(o["body"]):
+            exit_opt = {"name": o["txt"], "body": o["body"]}
+        else:
+            points.append({"name": o["txt"], "body": o["body"]})
+    stats["invest"] += 1
+    return {"t": "invest", "pre": pre, "points": points, "exit": exit_opt}
 
 
 def main():

@@ -30,7 +30,9 @@ export default defineConfig({
   publicDir: "public",
   build: {
     outDir: "dist",
-    emptyOutDir: true,
+    // 不清空重建: 本机沙箱的回收站工具清大目录经常 ETIMEDOUT, 且预览服务常驻 dist。
+    // 构建产物文件名稳定, 直接覆盖即可; 线上由 Vercel 全新构建, 不受影响。
+    emptyOutDir: false,
     // @antv/g-canvas、g-base 等是 ESM+CJS 混合模块, 内含裸 require("../package.json")。
     // 默认只转换纯 CJS 模块, 混合模块的 require 会漏到产物里, 线上报 require is not defined
     commonjsOptions: {

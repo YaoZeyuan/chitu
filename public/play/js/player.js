@@ -2,9 +2,10 @@
  *
  * 设计要点:
  * - 确定性执行: 给定 初始状态+选择链(chain), 剧情走向完全可重算;
- *   回退 = 截断 chain + 从头静默重放(不渲染文本, 数值变量随之恢复)。
+ *   回退/恢复进度 = 截断 chain + 从头「重建」(rebuild 模式: 全量瞬时渲染文本与媒体,
+ *   观感是历史对话都在, 只是进度回到了指定分支), chain 耗尽即切回 live 直播。
  * - chain 记录: [{s:故事id, k:'c'|'p', v:选项/调查点下标, t:文字, a:选项anchor}]
- *   k='c' 选项, k='p' 调查点(v=-1 表示结束调查)。
+ *   k='c' 选项, k='p' 调查点/问答菜单(v=-1 表示退出项)。
  * - 足迹(全局累计): qf_foot_story 已访问故事, qf_foot_choice 选项 anchor→已选下标,
  *   供 /plot/branch 的「我的足迹」高亮层读取。
  */
@@ -24,7 +25,7 @@
   var frames = [];          // 执行帧栈 [{items, i, inv?, isSeq?}]
   var chain = [];           // 本局选择链
   var chainIdx = 0;         // 重放游标
-  var mode = "live";        // live | replay
+  var mode = "live";        // live | rebuild (重建: 瞬时渲染历史, chain 耗尽转 live)
   var waiting = false;      // 停在文本等待点击
   var ended = false;        // 剧终
   var curStory = 0;
@@ -79,13 +80,13 @@
     }
   }
   function applyAssign(expr) {
-    var m = String(expr || "").match(/\[(\d+)[^\]]*\]\s*(=|\+|-|＋|－)\s*(.+)$/);
+    var m = String(expr || "").match(/\[(\d+)[^\]]*\]\s*(\+=|-=|＋=|－=|=|＋|－|\+|-)\s*(.+)$/);
     if (!m) return;
     var id = m[1], op = m[2], rhs = m[3].trim();
     var rm = rhs.match(/^数值：?\[(\d+)/);
     var rv = rm ? (vars[rm[1]] || 0) : (parseFloat(rhs) || 0);
-    if (op === "=") vars[id] = rv;
-    else if (op === "+" || op === "＋") vars[id] = (vars[id] || 0) + rv;
+    if (op === "=" ) vars[id] = rv;
+    else if (op === "+" || op === "＋" || op === "+=" || op === "＋=") vars[id] = (vars[id] || 0) + rv;
     else vars[id] = (vars[id] || 0) - rv;
   }
 
@@ -197,8 +198,8 @@
       if (fr.i >= fr.items.length) {
         frames.pop();
         if (fr.inv) {
-          // 调查点内容执行完毕, 回到调查面板
-          if (mode === "replay") {
+          // 调查/问答面板的条目执行完毕, 回到面板
+          if (mode === "rebuild") {
             if (!consumeInvestEntry(fr.inv)) return; // chain 耗尽→转live并停
           } else {
             showInvest(fr.inv);
@@ -211,12 +212,13 @@
       switch (node.t) {
         case "text":
           if (mode === "live") { appendPara(node); waiting = true; return; }
+          appendPara(node);   // rebuild: 历史文本瞬时补齐
           break;
         case "trans":
-          if (mode === "live") appendTrans(node.name);
+          appendTrans(node.name);
           break;
         case "pic": case "hide": case "bgm": case "bgmstop": case "se":
-          if (mode === "live") applyMedia(node);
+          applyMedia(node);   // rebuild 也应用媒体: 退回/恢复后背景立绘不丢
           break;
         case "assign":
           applyAssign(node.expr);
@@ -241,38 +243,39 @@
         case "jump": {
           if (node.utility) {
             // 工具剧情(黑屏渐入渐出/枪响等): 转场效果, 不切故事
-            if (mode === "live") appendTrans(node.uname || "……");
+            appendTrans(node.uname || "……");
             break;
           }
           if (node.to != null && DATA.stories[node.to]) {
             startStory(node.to);
-          } else { flowEnd(); return; }
+          } else { finishReplay(); flowEnd(); return; }
           break;
         }
         case "end":
-          if (mode === "replay") finishReplay();
+          finishReplay();
           showEnd();
           return;
-        case "choice":
-          if (mode === "replay") {
+        case "choice": {
+          if (mode === "rebuild") {
             var e = chain[chainIdx];
             if (e && e.k === "c") {
               chainIdx++;
-              footChoice(node.opts[e.v] ? node.opts[e.v].a : "", e.v);
-              frames.push({ items: (node.opts[e.v] || { body: [] }).body, i: 0 });
+              var ro = node.opts[e.v] || { body: [], txt: "" };
+              appendPicked(ro.txt || "");
+              frames.push({ items: ro.body, i: 0 });
+              if (chainIdx >= chain.length) finishReplay();
               break;
             }
-            finishReplay();
+            finishReplay();   // 链耗尽: 此处就是续玩点
           }
           showChoices(node);
           return;
+        }
         case "invest":
-          if (mode === "replay") {
-            if (node.pre && node.pre.length) frames.push({ items: node.pre, i: 0, inv: node });
-            else if (consumeInvestEntry(node)) break; else return;
-            break;
-          }
           if (node.pre && node.pre.length) { frames.push({ items: node.pre, i: 0, inv: node }); break; }
+          if (mode === "rebuild") {
+            if (consumeInvestEntry(node)) break; else return;
+          }
           showInvest(node);
           return;
         default:
@@ -280,19 +283,25 @@
       }
     }
     // 帧栈耗尽: 剧情流自然结束
+    finishReplay();
     flowEnd();
   }
 
-  // 重放中消费一条调查记录; 返回 false 表示 chain 耗尽(已切换 live 并停在调查面板)
+  // 重建/恢复中消费一条调查或问答记录; 返回 false 表示 chain 耗尽(已切换 live 并停在面板)
   function consumeInvestEntry(inv) {
     var e = chain[chainIdx];
     if (e && e.k === "p") {
       chainIdx++;
       if (e.v >= 0 && inv.points[e.v]) {
+        investVisited[e.v] = true;
+        appendPicked("调查:" + inv.points[e.v].name);
         frames.push({ items: inv.points[e.v].body, i: 0, inv: inv });
-        return true;
+      } else if (e.v < 0 && inv.exit) {
+        appendPicked(inv.exit.name);
+        frames.push({ items: inv.exit.body, i: 0, inv: inv, isSeq: true });
       }
-      return true; // v=-1 结束调查, 回到外层继续
+      if (chainIdx >= chain.length) finishReplay();
+      return true;
     }
     finishReplay();
     showInvest(inv);
@@ -301,9 +310,6 @@
 
   function finishReplay() {
     mode = "live";
-    var badge = $("replay-badge");
-    if (badge) badge.remove();
-    document.body.classList.remove("replaying");
   }
 
   // ---------------------------------------------------------------- 交互 UI
@@ -365,7 +371,7 @@
     node.points.forEach(function (p, idx) {
       var b = document.createElement("button");
       b.innerHTML = (investVisited[idx] ? "✓ " : "") + esc(p.name);
-      if (investVisited[idx]) b.className = "point-visited";
+      if (investVisited[idx]) { b.className = "point-visited"; b.disabled = true; }  // 已调查过: 禁止重复
       b.addEventListener("click", function (ev) {
         ev.stopPropagation();
         pickInvest(idx);
@@ -374,7 +380,12 @@
     });
     var endBtn = document.createElement("button");
     endBtn.className = "opt-end";
-    endBtn.textContent = "结束调查 →";
+    if (node.exit) {
+      endBtn.innerHTML = "✦ " + esc(node.exit.name);
+      endBtn.title = "问完所有问题后才可离开, 否则会被劝回";
+    } else {
+      endBtn.textContent = "结束调查 →";
+    }
     endBtn.addEventListener("click", function (ev) {
       ev.stopPropagation();
       pickInvest(-1);
@@ -389,7 +400,7 @@
     disableBox();
     footStory(curStory);
     pendingInvest = null;
-    var label = idx >= 0 ? "调查:" + node.points[idx].name : "结束调查";
+    var label = idx >= 0 ? "调查:" + node.points[idx].name : (node.exit ? node.exit.name : "结束调查");
     chain.push({ s: curStory, k: "p", v: idx, t: label });
     persistChain();
     renderHistory();
@@ -397,6 +408,9 @@
     if (idx >= 0) {
       investVisited[idx] = true;
       frames.push({ items: node.points[idx].body, i: 0, inv: node });
+    } else if (node.exit) {
+      // 问答菜单的退出项: 体内条件决定放行(loop_break)或劝回(回到面板)
+      frames.push({ items: node.exit.body, i: 0, inv: node, isSeq: true });
     }
     step();
   }
@@ -421,7 +435,7 @@
   }
 
   function flowEnd() {
-    if (mode === "replay") finishReplay();
+    finishReplay();
     var card = document.createElement("div");
     card.className = "endcard";
     var h = document.createElement("h2");
@@ -451,7 +465,7 @@
   var runStart = 1;   // 本局开局故事: 回退重放必须从这里开始(前段 set_var 才能正确恢复)
   function persistChain() { lsSet(LS_CHAIN, chain); lsSet(LS_RUNSTART, runStart); }
 
-  function replayAll(startSid) {
+  function replayAll(startSid, forceLive) {
     stopBgm();
     clearFlow();
     resetStage();
@@ -462,15 +476,8 @@
     vars = {};
     chainIdx = 0;
     waiting = false;
-    var resume = chain.length > 0;   // 有选择链才需要静默重放, 否则从头直播
-    mode = resume ? "replay" : "live";
-    document.body.classList.toggle("replaying", resume);
-    if (resume) {
-      var badge = document.createElement("div");
-      badge.id = "replay-badge";
-      badge.textContent = "回放中…";
-      document.body.appendChild(badge);
-    }
+    var resume = chain.length > 0;   // 有选择链: rebuild 重建历史; 无链: 从头直播
+    mode = resume ? "rebuild" : "live";
     startStory(startSid);
     step();
   }
@@ -503,7 +510,7 @@
     chain = [];
     persistChain();
     renderHistory();
-    replayAll(startSid);
+    replayAll(startSid, true);
     toast("已重新开始");
   }
 
@@ -603,7 +610,7 @@
       startSid = Number(m[1]);
       runStart = startSid;
       chain = [];
-      replayAll(runStart);
+      replayAll(runStart, true);
       var st = DATA.stories[startSid];
       appendTrans(st.name);
       toast("已定位到「" + st.name + "」, 开新局");
@@ -618,7 +625,7 @@
         toast("已恢复上局进度 (" + chain.length + " 个选择)");
       } else {
         runStart = DATA.entry || 1;
-        replayAll(runStart);
+        replayAll(runStart, true);
       }
     }
   }

@@ -96,6 +96,7 @@
 }
 #flow .opts button:hover { border-color: var(--accent); transform: translateX(4px); }
 #flow .opts.invest .point-visited { opacity: .45; cursor: default; }
+#flow .opts button:disabled { pointer-events: none; }  /* 已做的选择回显: 点击穿透到正文, 不吞推进点击 */
 #flow .opts .opt-end { border-style: dashed; color: var(--muted); }
 
 /* 已做选择回显 */
