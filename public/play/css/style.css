@@ -1,0 +1,140 @@
+/* 潜伏之赤途 · 纯文本模式 (复用 /plot/css/style.css 的变量与基础组件) */
+
+#wrap {
+  display: flex;
+  justify-content: center;
+  min-height: calc(100vh - 57px);
+}
+#stage-wrap { position: sticky; top: 57px; z-index: 5; width: 100%; }
+#stage-wrap.hidden-stage { display: none; }
+#stage {
+  position: relative;
+  height: 200px;
+  max-width: 860px;
+  margin: 8px auto 0;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #1c1a17 center/cover no-repeat;
+  box-shadow: 0 2px 10px rgba(40, 30, 10, .18);
+}
+#stage:empty { visibility: hidden; height: 0; margin: 0; }
+#stage .spic { position: absolute; object-fit: contain; }
+#stage .sbg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+
+#flow {
+  width: 100%;
+  max-width: 760px;
+  padding: 26px 20px 140px;
+  outline: none;
+}
+#flow p.nar, #flow p.dlg {
+  margin: 0 0 14px;
+  font-size: 17px;
+  line-height: 1.95;
+}
+#flow p.dlg { margin-top: 20px; }
+#flow p.dlg .who {
+  display: block;
+  font-size: 13px;
+  color: var(--accent);
+  letter-spacing: 2px;
+  margin-bottom: 2px;
+}
+#flow .trans {
+  text-align: center;
+  color: var(--line);
+  font-size: 12px;
+  margin: 18px 0;
+  letter-spacing: 6px;
+  user-select: none;
+}
+#flow .flash-text {
+  text-align: center;
+  font-size: 22px;
+  letter-spacing: 8px;
+  color: var(--ink);
+  margin: 34px 0;
+}
+
+/* 选项 */
+#flow .opts { margin: 26px 0 10px; display: flex; flex-direction: column; gap: 10px; }
+#flow .opts button {
+  font: inherit;
+  font-size: 16px;
+  text-align: left;
+  padding: 11px 18px;
+  border: 1.5px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  cursor: pointer;
+  transition: border-color .15s, transform .1s;
+}
+#flow .opts button:hover { border-color: var(--accent); transform: translateX(4px); }
+#flow .opts.invest .point-visited { opacity: .45; cursor: default; }
+#flow .opts .opt-end { border-style: dashed; color: var(--muted); }
+
+/* 已做选择回显 */
+#flow .picked {
+  margin: -6px 0 18px;
+  padding-left: 14px;
+  border-left: 3px solid var(--accent);
+  color: var(--accent);
+  font-size: 15px;
+}
+
+/* 剧终 / 本节完 */
+.endcard {
+  margin: 40px 0 20px;
+  padding: 26px 22px;
+  border: 1.5px solid var(--accent);
+  border-radius: 12px;
+  background: var(--accent-soft);
+  text-align: center;
+}
+.endcard h2 { margin: 0 0 8px; font-size: 22px; letter-spacing: 6px; color: var(--accent); }
+.endcard .end-btns { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 18px; }
+.endcard .end-btns button {
+  font: inherit; font-size: 14px; padding: 8px 16px;
+  border: 1px solid var(--accent); border-radius: 6px;
+  background: var(--panel); color: var(--accent); cursor: pointer;
+}
+.endcard .end-btns button:hover { background: var(--accent); color: #fff; }
+
+/* 历史侧栏 */
+#history {
+  position: fixed; top: 57px; right: 0; bottom: 0;
+  width: 300px;
+  background: var(--panel);
+  border-left: 1px solid var(--line);
+  box-shadow: -4px 0 14px rgba(50, 40, 20, .08);
+  padding: 16px;
+  overflow-y: auto;
+  z-index: 40;
+}
+#history.hidden { display: none; }
+#history h2 { font-size: 14px; margin: 0 0 10px; color: var(--muted); }
+#hist-list { margin: 0; padding: 0 0 0 20px; }
+#hist-list li { font-size: 13px; margin-bottom: 8px; line-height: 1.5; }
+#hist-list li .h-story { color: var(--muted); font-size: 12px; display: block; }
+#hist-list li a { cursor: pointer; color: var(--ink); }
+#hist-list li a:hover { color: var(--accent); }
+#hist-list li.key::marker { color: var(--accent); }
+.hist-tip { font-size: 12px; color: var(--muted); margin-top: 12px; }
+
+/* toast */
+#toast {
+  position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+  background: rgba(44, 42, 38, .92); color: #fff;
+  padding: 8px 18px; border-radius: 20px; font-size: 13px;
+  z-index: 60; transition: opacity .3s;
+}
+#toast.hidden { opacity: 0; pointer-events: none; }
+
+/* 回放中遮罩提示 */
+.replaying #flow { opacity: .45; }
+#replay-badge {
+  position: fixed; top: 70px; left: 50%; transform: translateX(-50%);
+  background: var(--blue); color: #fff;
+  padding: 5px 14px; border-radius: 14px; font-size: 12px;
+  z-index: 55;
+}

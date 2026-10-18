@@ -1,12 +1,15 @@
 import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
 
-// 模拟 vercel.json 中的 rewrite: /plot -> /plot/index.html
+// 模拟 vercel.json 中的 rewrite: /plot -> /plot/index.html, /play -> /play/index.html
 // （Vite dev/preview 不读 vercel.json，需要自己补）
 function plotIndexRewrite() {
   function handler(req, res, next) {
-    if (req.url === "/plot" || req.url?.startsWith("/plot?")) {
-      req.url = req.url.replace("/plot", "/plot/index.html");
+    for (const p of ["/plot", "/play"]) {
+      if (req.url === p || req.url?.startsWith(p + "?")) {
+        req.url = req.url.replace(p, p + "/index.html");
+        break;
+      }
     }
     next();
   }
@@ -40,6 +43,7 @@ export default defineConfig({
         game: "game.html",
         "plot/index": "plot/index.html",
         "plot/branch": "plot/branch.html",
+        "play/index": "play/index.html",
       },
     },
   },

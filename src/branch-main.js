@@ -193,6 +193,7 @@ function init(data) {
     var c = COLORS[type];
     // 条件判断: 菱形, 便于与剧情节点区分
     if (n.cond) {
+      var cl = footLit(id);
       return {
         id: String(id),
         nodeType: type,
@@ -201,10 +202,12 @@ function init(data) {
         type: "diamond",
         size: [230, 86],
         style: {
-          stroke: "#6a5a8a", fill: "#f2eef8", lineWidth: 1.5,
+          stroke: footOn && !cl ? "#d8d2c4" : (footOn ? "#d9822b" : "#6a5a8a"),
+          fill: footOn && !cl ? "#f2efe8" : (footOn ? "#fdf2e3" : "#f2eef8"),
+          lineWidth: footOn ? (cl ? 3 : 1) : 1.5,
           shadowBlur: 4, shadowColor: "rgba(60,50,30,0.12)",
         },
-        labelCfg: { style: { fill: "#4a3a6a", fontSize: 15, fontFamily: FONT } },
+        labelCfg: { style: { fill: footOn && !cl ? "#a59f90" : "#4a3a6a", fontSize: 15, fontFamily: FONT } },
       };
     }
     // 其余全部为卡片: 标题 + 摘要 + 统计
@@ -216,6 +219,17 @@ function init(data) {
     if (n.choices) meta.push("选项 " + n.choices);
     if (n.beat && !n.events && !n.choices) meta.push("抉择点");
     var h = summary ? 72 : meta.length ? 56 : 44;
+    // 足迹模式: 走过的描边橙色加粗, 没走的整体褪色
+    var lit = footLit(id);
+    if (footOn && !lit) {
+      return {
+        id: String(id), nodeType: type, raw: n, type: "card",
+        cardW: 280, cardH: h, cardTitle: title, cardSummary: summary,
+        cardMeta: meta.join(" · "),
+        cardFill: "#f2efe8", cardStroke: "#d8d2c4", cardLabel: "#a59f90",
+        cardSummaryColor: "#b8b2a2", cardMetaColor: "#c5bfae", cardLw: 1,
+      };
+    }
     return {
       id: String(id),
       nodeType: type,
@@ -226,10 +240,10 @@ function init(data) {
       cardSummary: summary,
       cardMeta: meta.join(" · "),
       cardFill: c.fill,
-      cardStroke: c.stroke,
+      cardStroke: footOn ? "#d9822b" : c.stroke,
       cardLabel: c.label,
       cardSummaryColor: c.summary,
-      cardLw: type === "end" || type === "ending" ? 2.5 : 2,
+      cardLw: footOn ? 3 : (type === "end" || type === "ending" ? 2.5 : 2),
     };
   }
 
@@ -274,6 +288,13 @@ function init(data) {
       m.labelCfg.style.fill = "#1b5e20";
       m.labelCfg.style.background = { fill: "#e8f5e9", padding: [3, 6, 3, 6], radius: 4 };
     }
+    if (footOn && !(footLit(e.f) && footLit(e.t))) {
+      // 足迹模式: 未走过的边褪色
+      m.style.stroke = "#ddd6c8";
+      m.style.endArrow = { path: "M 0,0 L 12,6 L 0,12 Z", fill: "#ddd6c8" };
+      m.labelCfg.style.fill = "#b8b2a2";
+      if (m.labelCfg.style.background) m.labelCfg.style.background.fill = "#f5f2ec";
+    }
     return m;
   }
 
@@ -286,6 +307,23 @@ function init(data) {
   var showAll = false;   // 全部展开/收起(按钮)
   var expanded = {};     // 用户点击展开的小节 story id -> true
   var keyOnly = false;   // 只看关键抉择(分叉/汇合/条件/剧终, 线性推进压缩)
+  var footOn = false;    // 我的足迹: 高亮纯文本模式(/play)走过的路径
+  var footStories = {};  // 已访问故事 sid -> 1 (来自 localStorage)
+  var footChoices = {};  // 选项 anchor -> 已选下标数组
+  function loadFoot() {
+    try { footStories = JSON.parse(localStorage.getItem("qf_foot_story") || "{}"); } catch (e) { footStories = {}; }
+    try { footChoices = JSON.parse(localStorage.getItem("qf_foot_choice") || "{}"); } catch (e) { footChoices = {}; }
+  }
+  loadFoot();
+  // 足迹判定: beat 有选中记录, 或其所属故事被访问过
+  function footLit(id) {
+    if (!footOn) return true;
+    var n = nodeById[id];
+    if (!n) return true;
+    if (n.beat && n.anchor && footChoices[n.anchor]) return true;
+    var sid = n.page != null ? n.page : (n.story != null ? n.story : id);
+    return !!(footStories[sid] || footStories[id]);
+  }
 
   // 节拍/合成/条件节点归属小节; 小节收起时折叠到小节节点上
   var storyHasKids = {}; // 有可展开剧情的小节
@@ -487,9 +525,10 @@ function init(data) {
     if ((raw.synthetic || raw.beat) && raw.anchor) viewUrl = "/plot?s=" + (raw.page || raw.story) + "#" + raw.anchor;
     else if (raw.synthetic || raw.cond || raw.beat) viewUrl = "/plot?s=" + (raw.page || raw.story);
     else viewUrl = "/plot?s=" + id;
-    h += '<p class="btn-row"><a class="btn primary" href="' + viewUrl + '" target="_blank">▶ 从这里开始读</a>'
+    var playUrl = "/play?s=" + (raw.page || raw.story || id);
+    h += '<p class="btn-row"><a class="btn primary" href="' + playUrl + '" target="_blank">▶ 从这里开始玩</a>'
        + '<a class="btn" href="' + viewUrl + '" target="_blank">进入速览 →</a></p>';
-    h += '<p class="meta">链接直达 /plot 对应剧情节点, 可从此处继续阅读</p>';
+    h += '<p class="meta">「开始玩」进入纯文本模式(可回退、记录足迹); 速览直达 /plot 对应剧情节点</p>';
     h += "</div>";
 
     // 来源（左）与去向（右）横向排列; 跨树目标标注 ↗, 点击后切换章节树
@@ -717,6 +756,20 @@ function init(data) {
   }
   if (keyBtn) keyBtn.addEventListener("click", function () {
     keyOnly = !keyOnly;
+    rebuild();
+  });
+
+  // "我的足迹" 切换按钮(高亮纯文本模式走过的路径)
+  var footBtn = document.getElementById("toggle-foot");
+  function updateFootBtn() {
+    if (!footBtn) return;
+    footBtn.textContent = footOn ? "隐藏足迹" : "我的足迹";
+    footBtn.classList.toggle("active", footOn);
+  }
+  if (footBtn) footBtn.addEventListener("click", function () {
+    footOn = !footOn;
+    loadFoot(); // 回来可能有新足迹
+    updateFootBtn();
     rebuild();
   });
 
