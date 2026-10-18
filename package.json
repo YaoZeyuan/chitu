@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "serve:dist": "python -m http.server 8321 --bind 127.0.0.1 --directory dist"
   },
   "dependencies": {
     "@antv/g6": "4.8.24",

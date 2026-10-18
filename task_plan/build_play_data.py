@@ -37,14 +37,14 @@ def abs_img(ref):
     path, name = resolve_img(ref)
     if not path:
         return None, name
-    return path[3:] if path.startswith("../") else path, name  # 去掉 ../ 变绝对路径
+    return "/" + (path[3:] if path.startswith("../") else path), name
 
 
 def abs_audio(f):
     path, name = resolve_audio(f)
     if not path:
         return None, name
-    return path[3:] if path.startswith("../") else path, name
+    return "/" + (path[3:] if path.startswith("../") else path), name
 
 
 # ---------------------------------------------------------------- 线性化

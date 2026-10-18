@@ -122,6 +122,8 @@
     scrollWin();
   }
   function appendTrans(name) {
+    var last = flowEl.lastElementChild;
+    if (last && last.classList && (last.classList.contains("trans") || last.classList.contains("flash-text"))) return; // 连续转场只显示一个
     var d = document.createElement("div");
     d.className = "trans";
     d.textContent = "◆";
