@@ -1,16 +1,27 @@
 /* 潜伏之赤途 · 纯文本模式 (复用 /plot/css/style.css 的变量与基础组件) */
 
 #wrap {
-  display: block;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 18px;
   min-height: calc(100vh - 57px);
+  padding: 0 12px;
 }
-#stage-wrap { position: relative; z-index: 5; width: 100%; }
+/* 左栏: 场景画幅, 吸顶固定 */
+#stage-wrap {
+  position: sticky;
+  top: 57px;
+  width: min(46%, 560px);
+  flex-shrink: 0;
+}
 #stage-wrap.hidden-stage { display: none; }
 #stage {
   position: relative;
-  height: clamp(220px, 40vh, 400px);
-  max-width: 860px;
-  margin: 12px auto 0;
+  height: calc(100vh - 57px - 24px);
+  max-height: 760px;
+  width: 100%;
+  margin: 12px 0 0;
   border-radius: 10px;
   overflow: hidden;
   background: #1c1a17 center/cover no-repeat;
@@ -24,12 +35,21 @@
 }
 #stage .sbg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 
+/* 右栏: 对话流 */
 #flow {
-  width: 100%;
-  max-width: 760px;
+  flex: 1;
+  min-width: 0;
+  max-width: 720px;
   margin: 0 auto;
   padding: 26px 20px 140px;
   outline: none;
+}
+
+/* 窄屏退回上下布局 */
+@media (max-width: 860px) {
+  #wrap { display: block; padding: 0; }
+  #stage-wrap { position: relative; top: 0; width: 100%; }
+  #stage { height: clamp(220px, 40vh, 400px); max-width: 860px; margin: 12px auto 0; }
 }
 #flow p.nar, #flow p.dlg {
   margin: 0 0 14px;

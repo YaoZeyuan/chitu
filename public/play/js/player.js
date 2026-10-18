@@ -146,13 +146,21 @@
     if (!mediaOn) return;
     if (node.t === "pic") {
       if (node.bg) {
+        // 换场景: 旧场景的立绘全部清掉, 只保留新背景
+        stageEl.querySelectorAll("img.spic").forEach(function (i) { i.remove(); });
         stageEl.style.backgroundImage = 'url("' + node.img + '")';
       } else {
-        var img = document.createElement("img");
-        img.className = "spic";
-        img.src = node.img;
-        img.dataset.slot = node.slot || "";
-        stageEl.appendChild(img);
+        var slot = node.slot || "";
+        var hit = stageEl.querySelector('img[data-slot="' + slot + '"]');
+        if (hit) {
+          hit.src = node.img;   // 同槽位替换, 不叠加
+        } else {
+          var img = document.createElement("img");
+          img.className = "spic";
+          img.src = node.img;
+          img.dataset.slot = slot;
+          stageEl.appendChild(img);
+        }
       }
     } else if (node.t === "hide") {
       var hit = stageEl.querySelector('img[data-slot="' + node.slot + '"]');
