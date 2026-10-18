@@ -49,7 +49,8 @@ def abs_audio(f):
 
 # ---------------------------------------------------------------- 线性化
 def parse_range(evs, lo, hi, stats):
-    """把 [lo,hi) 事件区间解析为节点列表 (缩进驱动, 与 build_data.parse_range 同源语义)。"""
+    """把 [lo,hi) 事件区间解析为节点列表 (缩进驱动, 与 build_data.parse_range 同源语义)。
+    每个节点附带 src=源事件索引, 供完整性审计(set_var 覆盖率等)。"""
     items = []
     i = lo
     while i < hi:
@@ -57,13 +58,13 @@ def parse_range(evs, lo, hi, stats):
         t = e["type"]
         ind = e["ind"]
         if t in ("narration", "dialogue"):
-            node = {"t": "text", "h": fmt_text(e.get("text", ""))}
+            node = {"t": "text", "h": fmt_text(e.get("text", "")), "src": e["i"]}
             if t == "dialogue" and e.get("speaker"):
                 node["who"] = e["speaker"]
             items.append(node)
             i += 1
         elif t == "set_var":
-            items.append({"t": "assign", "expr": e.get("expr", "")})
+            items.append({"t": "assign", "expr": e.get("expr", ""), "src": e["i"]})
             i += 1
         elif t == "choice_prompt":
             n = len(e["opts"])
@@ -78,12 +79,12 @@ def parse_range(evs, lo, hi, stats):
                 while j < hi and evs[j]["ind"] > lab["ind"]:
                     j += 1
                 body = parse_range(evs, i + 1, j, stats)
-                opts.append({"txt": lab.get("text", ""), "body": body, "a": anchor})
+                opts.append({"txt": lab.get("text", ""), "body": body, "a": anchor, "src": lab["i"]})
                 i = j
             # 消费 merge
             if i < hi and evs[i]["type"] == "merge":
                 i += 1
-            items.append({"t": "choice", "opts": opts})
+            items.append({"t": "choice", "opts": opts, "src": e["i"]})
             stats["choice"] += 1
         elif t in ("if", "elseif", "else"):
             # 收集同层 if/elseif/else 链
@@ -94,9 +95,9 @@ def parse_range(evs, lo, hi, stats):
                 while j < hi and evs[j]["ind"] > ind:
                     j += 1
                 body = parse_range(evs, i + 1, j, stats)
-                branches.append({"cond": b.get("cond", ""), "body": body})
+                branches.append({"cond": b.get("cond", ""), "body": body, "src": b["i"]})
                 i = j
-            items.append({"t": "cond", "branches": branches})
+            items.append({"t": "cond", "branches": branches, "src": e["i"]})
             stats["cond"] += 1
         elif t == "loop_start":
             # 找配对 loop_end (同缩进)
@@ -111,13 +112,18 @@ def parse_range(evs, lo, hi, stats):
                     depth -= 1
                 j += 1
             body = evs[i + 1:j]
-            items.append(parse_loop(body, stats))
+            items.append(parse_loop(body, stats, e["i"]))
             i = j + 1
             stats["loop"] += 1
         elif t == "jump":
+            # jump 可携带 var/val 隐式赋值(跳转同时记一个标志变量, 原游戏 Code 206)
+            if e.get("var"):
+                items.append({"t": "assign",
+                              "expr": "[%03d] = %s" % (int(e["var"]), e.get("val", "0")),
+                              "src": e["i"]})
             m = re.match(r"(\d+):", e.get("target", "") or "")
             to = int(m.group(1)) if m else None
-            node = {"t": "jump", "to": to}
+            node = {"t": "jump", "to": to, "src": e["i"]}
             if to in UTILITY:
                 # 工具剧情(黑屏渐入/渐出/枪响等转场效果): 播放器里只是一段效果, 直接当转场跳过
                 node["utility"] = True
@@ -125,40 +131,40 @@ def parse_range(evs, lo, hi, stats):
             items.append(node)
             i += 1
         elif t == "game_over":
-            items.append({"t": "end"})
+            items.append({"t": "end", "src": e["i"]})
             i += 1
         elif t == "substory":
-            items.append({"t": "trans", "name": (e.get("name") or "").split(":", 1)[-1]})
+            items.append({"t": "trans", "name": (e.get("name") or "").split(":", 1)[-1], "src": e["i"]})
             i += 1
         elif t == "show_pic":
             img, _name = abs_img(e.get("img", ""))
             if img:
-                node = {"t": "pic", "img": img, "slot": str(e.get("slot", ""))}
+                node = {"t": "pic", "img": img, "slot": str(e.get("slot", "")), "src": e["i"]}
                 if "/background/" in img.lower():
                     node["bg"] = True
                 items.append(node)
             i += 1
         elif t == "hide_pic":
-            items.append({"t": "hide", "slot": str(e.get("slot", ""))})
+            items.append({"t": "hide", "slot": str(e.get("slot", "")), "src": e["i"]})
             i += 1
         elif t in ("bgm",):
             f, _n = abs_audio(e.get("file", ""))
             if f:
-                items.append({"t": "bgm", "f": f})
+                items.append({"t": "bgm", "f": f, "src": e["i"]})
             i += 1
         elif t in ("se", "bgs"):
             f, _n = abs_audio(e.get("file", ""))
             if f:
-                items.append({"t": "se", "f": f})
+                items.append({"t": "se", "f": f, "src": e["i"]})
             i += 1
         elif t in ("bgm_fadeout",):
-            items.append({"t": "bgmstop"})
+            items.append({"t": "bgmstop", "src": e["i"]})
             i += 1
         elif t in ("move_pic", "note", "wait", "click_wait", "shake", "flash",
                    "weather", "op", "stop_se", "bgs_fadeout"):
             i += 1  # 纯表现层/系统事件, Play 模式跳过
         elif t == "loop_break":
-            items.append({"t": "break"})
+            items.append({"t": "break", "src": e["i"]})
             i += 1
         elif t in ("merge", "choice", "loop_end"):
             i += 1  # 由上层消费, 防御性略过
@@ -167,20 +173,21 @@ def parse_range(evs, lo, hi, stats):
     return items
 
 
-def parse_loop(body_evs, stats):
+def parse_loop(body_evs, stats, src=None):
     """循环块: menu_label→调查面板; choice_prompt→可重复问答菜单(选完跳回菜单头,
     由退出项体内的条件+loop_break 决定能否离开); 否则普通序列执行一次。"""
     has_menu = any(e["type"] == "menu_label" for e in body_evs)
     cp = next((k for k, e in enumerate(body_evs) if e["type"] == "choice_prompt"), None)
     if not has_menu and cp is None:
-        return {"t": "seq", "body": parse_range(body_evs, 0, len(body_evs), stats)}
+        return {"t": "seq", "body": parse_range(body_evs, 0, len(body_evs), stats), "src": src}
     if has_menu:
-        return _parse_menu_label(body_evs, stats)
-    return _parse_ask_menu(body_evs, cp, stats)
+        return _parse_menu_label(body_evs, stats, src)
+    return _parse_ask_menu(body_evs, cp, stats, src)
 
 
-def _parse_menu_label(body_evs, stats):
-    # 调查: 前导段 + 各 menu_label 点
+def _parse_menu_label(body_evs, stats, src=None):
+    # 调查: 前导段 + 各 menu_label 点; 点间杂项(状态更新/时间推进/出口门控等)
+    # 整段并入前一个调查点, 保证原游戏每次调查后的数值结算不被丢弃。
     pre = []
     k = 0
     while k < len(body_evs) and body_evs[k]["type"] != "menu_label":
@@ -189,27 +196,30 @@ def _parse_menu_label(body_evs, stats):
     points = []
     while k < len(body_evs):
         e = body_evs[k]
-        if e["type"] == "menu_label":
-            name = (e.get("text") or "").strip()
-            j = k + 1
-            while j < len(body_evs):
-                t2 = body_evs[j]["type"]
-                ind2 = body_evs[j]["ind"]
-                if (t2 == "menu_label") or (t2 in ("loop_break", "loop_end") and ind2 <= e["ind"]) \
-                        or (t2 in ("if", "elseif", "else") and ind2 <= e["ind"]):
-                    break
-                j += 1
-            pts = {"name": name, "body": parse_range(body_evs, k + 1, j, stats)}
-            points.append(pts)
-            k = j
-        elif e["type"] == "loop_break":
-            # 循环出口之后的段落(少数情况)——并入前导尾
-            k += 1
-        else:
-            # 点间杂项(条件尾等)忽略——调查点内容已覆盖主要文本
-            k += 1
+        if e["type"] != "menu_label":
+            k += 1  # 防御: 首个 menu_label 之前的裸杂项已在 pre
+            continue
+        name = (e.get("text") or "").strip()
+        j = k + 1
+        while j < len(body_evs):
+            t2 = body_evs[j]["type"]
+            ind2 = body_evs[j]["ind"]
+            if (t2 == "menu_label") or (t2 in ("loop_break", "loop_end") and ind2 <= e["ind"]) \
+                    or (t2 in ("if", "elseif", "else") and ind2 <= e["ind"]):
+                break
+            j += 1
+        pts = {"name": name, "body": parse_range(body_evs, k + 1, j, stats)}
+        # 点间杂项: 从 j 到下一个 menu_label(或循环体尾)整段解析, 并入本点
+        j2 = j
+        while j2 < len(body_evs) and body_evs[j2]["type"] != "menu_label":
+            j2 += 1
+        if j2 > j:
+            pts["body"].extend(parse_range(body_evs, j, j2, stats))
+        points.append(pts)
+        k = j2
     stats["invest"] += 1
-    return {"t": "invest", "pre": parse_range(pre, 0, len(pre), stats), "points": points, "exit": None}
+    return {"t": "invest", "pre": parse_range(pre, 0, len(pre), stats), "points": points,
+            "exit": None, "src": src}
 
 
 def _has_loop_break(items):
@@ -225,7 +235,7 @@ def _has_loop_break(items):
     return False
 
 
-def _parse_ask_menu(body_evs, cp, stats):
+def _parse_ask_menu(body_evs, cp, stats, src=None):
     """choice_prompt 菜单循环 → invest 节点。
     退出项 = 体内含 loop_break 的选项(原游戏的'我没有问题了'), 其条件门控原样保留。"""
     pre = parse_range(body_evs, 0, cp, stats)
@@ -241,7 +251,7 @@ def _parse_ask_menu(body_evs, cp, stats):
         while j < len(body_evs) and body_evs[j]["ind"] > lab["ind"]:
             j += 1
         body = parse_range(body_evs, k + 1, j, stats)
-        opts.append({"txt": lab.get("text", ""), "body": body, "a": anchor})
+        opts.append({"txt": lab.get("text", ""), "body": body, "a": anchor, "src": lab["i"]})
         k = j
     exit_opt = None
     points = []
@@ -250,8 +260,16 @@ def _parse_ask_menu(body_evs, cp, stats):
             exit_opt = {"name": o["txt"], "body": o["body"]}
         else:
             points.append({"name": o["txt"], "body": o["body"]})
+    # 菜单选项之后的残留事件(merge/出口后结算等): 并入退出项尾部(原游戏 loop 出口后执行)
+    if k < len(body_evs):
+        post = parse_range(body_evs, k, len(body_evs), stats)
+        if post:
+            if exit_opt is not None:
+                exit_opt["body"].extend(post)
+            elif points:
+                points[-1]["body"].extend(post)
     stats["invest"] += 1
-    return {"t": "invest", "pre": pre, "points": points, "exit": exit_opt}
+    return {"t": "invest", "pre": pre, "points": points, "exit": exit_opt, "src": src}
 
 
 def main():

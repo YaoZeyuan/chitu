@@ -67,12 +67,14 @@
 }
 #flow .trans {
   text-align: center;
-  color: var(--line);
-  font-size: 12px;
+  color: var(--muted);
+  font-size: 13px;
   margin: 18px 0;
-  letter-spacing: 6px;
+  letter-spacing: 3px;
   user-select: none;
 }
+#flow .trans::before { content: "◆ "; font-size: 10px; color: var(--line); }
+#flow .trans::after { content: " ◆"; font-size: 10px; color: var(--line); }
 #flow .flash-text {
   text-align: center;
   font-size: 22px;

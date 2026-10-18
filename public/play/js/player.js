@@ -12,7 +12,8 @@
 (function () {
   "use strict";
 
-  var LS_CHAIN = "qf_play_chain";
+  // v2: 剧本结构升级(调查/问答菜单重构+数值链补全)后旧链可能与新结构错位, 直接弃用
+  var LS_CHAIN = "qf_play_chain.v2";
   var LS_FOOT_S = "qf_foot_story";
   var LS_FOOT_C = "qf_foot_choice";
   var LS_MEDIA = "qf_play_media";
@@ -62,13 +63,15 @@
   }
 
   // ---------------------------------------------------------------- 表达式求值
+  // 变量 id 统一归一化为十进制整数, 避免 "09"/"9"/"009" 等填充差异导致读写错位
+  function vid(s) { return parseInt(s, 10); }
   function evalExpr(expr) {
     var m = String(expr || "").match(/数值：?\[(\d+)[^\]]*\]\s*(≥|≤|＞|＜|＝|≠|>=|<=|==|!=|>|<|=)\s*(.+)$/);
     if (!m) return true; // 无法解析的条件按真处理, 保证流程不卡死
-    var lv = vars[m[1]] || 0;
+    var lv = vars[vid(m[1])] || 0;
     var rhs = m[3].trim();
     var rm = rhs.match(/^数值：?\[(\d+)/);
-    var rv = rm ? (vars[rm[1]] || 0) : (parseFloat(rhs) || 0);
+    var rv = rm ? (vars[vid(rm[1])] || 0) : (parseFloat(rhs) || 0);
     switch (m[2]) {
       case "＝": case "=": case "==": return lv === rv;
       case "≠": case "!=": return lv !== rv;
@@ -82,9 +85,9 @@
   function applyAssign(expr) {
     var m = String(expr || "").match(/\[(\d+)[^\]]*\]\s*(\+=|-=|＋=|－=|=|＋|－|\+|-)\s*(.+)$/);
     if (!m) return;
-    var id = m[1], op = m[2], rhs = m[3].trim();
+    var id = vid(m[1]), op = m[2], rhs = m[3].trim();
     var rm = rhs.match(/^数值：?\[(\d+)/);
-    var rv = rm ? (vars[rm[1]] || 0) : (parseFloat(rhs) || 0);
+    var rv = rm ? (vars[vid(rm[1])] || 0) : (parseFloat(rhs) || 0);
     if (op === "=" ) vars[id] = rv;
     else if (op === "+" || op === "＋" || op === "+=" || op === "＋=") vars[id] = (vars[id] || 0) + rv;
     else vars[id] = (vars[id] || 0) - rv;
@@ -123,12 +126,14 @@
     scrollWin();
   }
   function appendTrans(name) {
+    // 转场要显示名称(枪声/黑屏渐入渐出等), 否则死亡环节剧情不完整;
+    // 仅当上一条是同名转场时才去重
+    var label = "── " + (name || "……") + " ──";
     var last = flowEl.lastElementChild;
-    if (last && last.classList && (last.classList.contains("trans") || last.classList.contains("flash-text"))) return; // 连续转场只显示一个
+    if (last && last.classList && last.classList.contains("trans") && last.textContent === label) return;
     var d = document.createElement("div");
     d.className = "trans";
-    d.textContent = "◆";
-    d.title = name || "";
+    d.textContent = label;
     flowEl.appendChild(d);
   }
   function appendPicked(txt) {
@@ -196,15 +201,17 @@
     while (frames.length) {
       var fr = frames[frames.length - 1];
       if (fr.i >= fr.items.length) {
-        frames.pop();
-        if (fr.inv) {
-          // 调查/问答面板的条目执行完毕, 回到面板
+        if (fr.inv && !fr.brkDone) {
+          if (!fr.anchor) frames.pop();  // 调查点/退出项体帧: 弹出后回面板
+          // anchor 锚帧: 常驻栈上, 作为 loop_break 的截断点; 玩家操作驱动后续
           if (mode === "rebuild") {
             if (!consumeInvestEntry(fr.inv)) return; // chain 耗尽→转live并停
           } else {
             showInvest(fr.inv);
             return;
           }
+        } else {
+          frames.pop();
         }
         continue;
       }
@@ -232,12 +239,18 @@
           break;
         }
         case "seq":
-          frames.push({ items: node.body, i: 0, isSeq: true });
+          frames.push({ items: node.body, i: 0, isSeq: true, brk: true });
           break;
         case "break":
-          while (frames.length) {
-            var popped = frames.pop();
-            if (popped.isSeq) break;
+          // loop_break: 截断到最近的「循环边界帧」(调查面板锚帧/序列帧)并标记退出,
+          // 锚帧本身保留在栈上(耗尽时按 brkDone 直接放行), 外层选择体/条件体不受影响。
+          for (var fi = frames.length - 1; fi >= 0; fi--) {
+            if (frames[fi].brk) {
+              frames[fi].brkDone = true;
+              frames[fi].i = frames[fi].items.length;  // 边界帧剩余项不再执行
+              frames.length = fi + 1;
+              break;
+            }
           }
           break;
         case "jump": {
@@ -272,12 +285,9 @@
           return;
         }
         case "invest":
-          if (node.pre && node.pre.length) { frames.push({ items: node.pre, i: 0, inv: node }); break; }
-          if (mode === "rebuild") {
-            if (consumeInvestEntry(node)) break; else return;
-          }
-          showInvest(node);
-          return;
+          // 锚帧: pre 播完弹出面板并常驻栈上; loop_break 截断至此并标记 brkDone 放行
+          frames.push({ items: node.pre || [], i: 0, inv: node, brk: true, anchor: true });
+          break;
         default:
           break;
       }
