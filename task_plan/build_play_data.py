@@ -142,10 +142,28 @@ def parse_range(evs, lo, hi, stats):
                 node = {"t": "pic", "img": img, "slot": str(e.get("slot", "")), "src": e["i"]}
                 if "/background/" in img.lower():
                     node["bg"] = True
+                else:
+                    # 橙光舞台 960x540: x/y=相对默认位置的偏移(px), w=缩放百分比, alpha=0-255
+                    # (缺失时的中性值: 居中/原尺寸/不透明; 立绘淡入由后续 move_pic 补 alpha=255)
+                    node["x"] = int(e.get("x") or 0)
+                    node["y"] = int(e.get("y") or 0)
+                    node["w"] = int(e.get("w") or 100)
+                    node["alpha"] = int(e.get("alpha") if e.get("alpha") is not None else 255)
                 items.append(node)
             i += 1
+        elif t == "move_pic":
+            # move_pic: 换图/平移/淡入淡出/说话高亮(说话者255,听者100) —— 播放器按最终态应用
+            img2, _n2 = abs_img(e.get("img", ""))
+            if img2 and "/background/" not in img2.lower():
+                items.append({"t": "picmove", "img": img2, "slot": str(e.get("slot", "")),
+                              "x": int(e.get("x") or 0), "y": int(e.get("y") or 0),
+                              "w": int(e.get("w") or 100),
+                              "alpha": int(e.get("alpha") if e.get("alpha") is not None else 255),
+                              "src": e["i"]})
+            i += 1
         elif t == "hide_pic":
-            items.append({"t": "hide", "slot": str(e.get("slot", "")), "src": e["i"]})
+            # hide_pic 的槽位字段是 index(不是 slot), 之前读错导致清除立绘从未生效
+            items.append({"t": "hide", "slot": str(e.get("index", e.get("slot", ""))), "src": e["i"]})
             i += 1
         elif t in ("bgm",):
             f, _n = abs_audio(e.get("file", ""))
@@ -160,7 +178,7 @@ def parse_range(evs, lo, hi, stats):
         elif t in ("bgm_fadeout",):
             items.append({"t": "bgmstop", "src": e["i"]})
             i += 1
-        elif t in ("move_pic", "note", "wait", "click_wait", "shake", "flash",
+        elif t in ("note", "wait", "click_wait", "shake", "flash",
                    "weather", "op", "stop_se", "bgs_fadeout"):
             i += 1  # 纯表现层/系统事件, Play 模式跳过
         elif t == "loop_break":

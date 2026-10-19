@@ -202,6 +202,24 @@
   }
 
   var lastBgNode = null;   // 最近一次背景图节点: 媒体从关到开时补放当前场景
+  // 橙光原始舞台 960x540; x/y 为相对默认位置的像素偏移, 换算成舞台百分比平移
+  function ensureSlotImg(slot, want) {
+    var hit = stageEl.querySelector('img[data-slot="' + slot + '"]');
+    if (!hit) {
+      hit = document.createElement("img");
+      hit.className = "spic";
+      hit.dataset.slot = slot;
+      stageEl.appendChild(hit);
+    }
+    if (want && hit.getAttribute("src") !== want) hit.src = want;
+    return hit;
+  }
+  function paintPortrait(img, node) {
+    var t = "translate(" + ((node.x || 0) / 960) * 100 + "%, " + ((node.y || 0) / 540) * 100 + "%)";
+    if (node.w != null && node.w !== 100) t += " scale(" + node.w / 100 + ")";
+    img.style.transform = t;
+    img.style.opacity = node.alpha == null ? 1 : node.alpha / 255;
+  }
   function applyMedia(node) {
     if (node.t === "pic" && node.bg) lastBgNode = node;  // 无论开关都记录, 开媒体时补放
     if (!mediaOn) return;
@@ -211,18 +229,11 @@
         stageEl.querySelectorAll("img.spic").forEach(function (i) { i.remove(); });
         stageEl.style.backgroundImage = 'url("' + node.img + '")';
       } else {
-        var slot = node.slot || "";
-        var hit = stageEl.querySelector('img[data-slot="' + slot + '"]');
-        if (hit) {
-          hit.src = node.img;   // 同槽位替换, 不叠加
-        } else {
-          var img = document.createElement("img");
-          img.className = "spic";
-          img.src = node.img;
-          img.dataset.slot = slot;
-          stageEl.appendChild(img);
-        }
+        paintPortrait(ensureSlotImg(node.slot || "", node.img), node);
       }
+    } else if (node.t === "picmove") {
+      // move_pic 最终态: 换图/平移/缩放/淡入淡出(说话者 255, 听者变暗)
+      paintPortrait(ensureSlotImg(node.slot || "", node.img), node);
     } else if (node.t === "hide") {
       var hit = stageEl.querySelector('img[data-slot="' + node.slot + '"]');
       if (hit) hit.remove();
@@ -298,7 +309,7 @@
         case "trans":
           appendTrans(node.name);
           break;
-        case "pic": case "hide": case "bgm": case "bgmstop": case "se":
+        case "pic": case "picmove": case "hide": case "bgm": case "bgmstop": case "se":
           applyMedia(node);   // rebuild 也应用媒体: 退回/恢复后背景立绘不丢
           break;
         case "assign":
@@ -894,8 +905,8 @@
 
   // no-cache: 剧本数据更新后浏览器必须重新协商, 避免玩到旧剧本
   Promise.all([
-    fetch("/play/js/script.json?v=20261019b", { cache: "no-cache" }),
-    fetch("/plot/js/branch_vars.json?v=20261019b", { cache: "no-cache" })
+    fetch("/play/js/script.json?v=20261020a", { cache: "no-cache" }),
+    fetch("/plot/js/branch_vars.json?v=20261020a", { cache: "no-cache" })
       .catch(function () { return null; }),
   ])
     .then(function (rs) {
