@@ -5,13 +5,19 @@ inject();
 
 /* ---------------- 数据 ---------------- */
 async function load() {
-  var res = await fetch("/plot/js/branches.json");
+  var VV = "?v=20261019b";   // 数据版本: 更新数据后同步改这里, 避免浏览器缓存旧 json
+  var res = await fetch("/plot/js/branches.json" + VV, { cache: "no-cache" });
   if (!res.ok) throw new Error("branches.json 加载失败: " + res.status);
   var data = await res.json();
   // LLM 精选数据(摘要覆盖 + 关键抉择标记); 加载失败不阻塞, 退回机械摘要
   try {
-    var r2 = await fetch("/plot/js/llm_curated.json");
+    var r2 = await fetch("/plot/js/llm_curated.json" + VV, { cache: "no-cache" });
     if (r2.ok) data.curated = await r2.json();
+  } catch (e) { /* ignore */ }
+  // 变量元数据与每故事条件变量引用(节点详情「变量状态」用); 失败不阻塞
+  try {
+    var r3 = await fetch("/plot/js/branch_vars.json" + VV, { cache: "no-cache" });
+    if (r3.ok) data.varsData = await r3.json();
   } catch (e) { /* ignore */ }
   return data;
 }
@@ -307,7 +313,8 @@ function init(data) {
   var showAll = false;   // 全部展开/收起(按钮)
   var expanded = {};     // 用户点击展开的小节 story id -> true
   var keyOnly = false;   // 只看关键抉择(分叉/汇合/条件/剧终, 线性推进压缩)
-  var footOn = false;    // 我的足迹: 高亮纯文本模式(/play)走过的路径
+  var footOn = true;     // 我的足迹: 高亮纯文本模式(/play)走过的路径; 默认开启, 记住手动关闭
+  try { footOn = localStorage.getItem("qf_foot_on") !== "0"; } catch (e) { }
   var footStories = {};  // 已访问故事 sid -> 1 (来自 localStorage)
   var footChoices = {};  // 选项 anchor -> 已选下标数组
   function loadFoot() {
@@ -323,6 +330,66 @@ function init(data) {
     if (n.beat && n.anchor && footChoices[n.anchor]) return true;
     var sid = n.page != null ? n.page : (n.story != null ? n.story : id);
     return !!(footStories[sid] || footStories[id]);
+  }
+
+  /* ---------- 节点变量状态(跳转 /play 前可设定初始值) ---------- */
+  var VARS_META = (data.varsData && data.varsData.vars) || {};    // vid -> {n,kind,p}
+  var STORY_VARS = (data.varsData && data.varsData.storyVars) || {}; // sid -> [vid..]
+  var VAR_SHOW_MAX = 10; // 详情面板默认最多展示的变量数, 其余可展开
+
+  function nodeSidOf(n) { return n.story != null ? n.story : (n.page != null ? n.page : n.id); }
+
+  // 沿分支图向下 BFS, 汇总下游各故事条件里引用的变量(含本节点所属故事)
+  var dvarsCache = {};
+  function downstreamVarIds(id) {
+    if (dvarsCache[id]) return dvarsCache[id];
+    var seen = {}, stack = [id], out = {};
+    while (stack.length) {
+      var cur = stack.pop();
+      if (seen[cur]) continue;
+      seen[cur] = 1;
+      var nn = nodeById[cur];
+      if (nn) {
+        (STORY_VARS[String(nodeSidOf(nn))] || []).forEach(function (v) { out[v] = true; });
+      }
+      (outMap[cur] || []).forEach(function (e) { if (!seen[e.t]) stack.push(e.t); });
+    }
+    var arr = Object.keys(out).map(Number).sort(function (a, b) { return a - b; });
+    dvarsCache[id] = arr;
+    return arr;
+  }
+
+  // 已保存节点参数: FIFO 队列, 上限 10 个节点, 最近使用在前; 默认值(0)不落盘
+  var LS_NODEVARS = "qf_branch_nodevars";
+  function loadNodeVarQueue() {
+    try {
+      var a = JSON.parse(localStorage.getItem(LS_NODEVARS) || "[]");
+      return Array.isArray(a) ? a : [];
+    } catch (e) { return []; }
+  }
+  function persistNodeVarQueue(q) {
+    try { localStorage.setItem(LS_NODEVARS, JSON.stringify(q.slice(0, 10))); } catch (e) { }
+  }
+  function savedNodeVars(id) {
+    var q = loadNodeVarQueue();
+    for (var i = 0; i < q.length; i++) if (q[i].n === id) return q[i].v || {};
+    return null;
+  }
+  function upsertNodeVars(id, sel) {
+    var q = loadNodeVarQueue().filter(function (e) { return e.n !== id; });
+    var v = {};
+    Object.keys(sel).forEach(function (k) { if (sel[k] !== 0) v[k] = sel[k]; });
+    if (Object.keys(v).length) q.unshift({ n: id, v: v });
+    persistNodeVarQueue(q);
+    return q;
+  }
+
+  function buildPlayUrl(id, sel) {
+    var raw = nodeById[id];
+    var sid = raw.page || raw.story || id;
+    var parts = [];
+    Object.keys(sel || {}).forEach(function (k) { if (sel[k] !== 0) parts.push(k + ":" + sel[k]); });
+    return "/play?s=" + sid + (parts.length ? "&v=" + parts.join(",") : "");
   }
 
   // 节拍/合成/条件节点归属小节; 小节收起时折叠到小节节点上
@@ -525,10 +592,41 @@ function init(data) {
     if ((raw.synthetic || raw.beat) && raw.anchor) viewUrl = "/plot?s=" + (raw.page || raw.story) + "#" + raw.anchor;
     else if (raw.synthetic || raw.cond || raw.beat) viewUrl = "/plot?s=" + (raw.page || raw.story);
     else viewUrl = "/plot?s=" + id;
-    var playUrl = "/play?s=" + (raw.page || raw.story || id);
-    h += '<p class="btn-row"><a class="btn primary" href="' + playUrl + '" target="_blank">▶ 从这里开始玩</a>'
+    // 变量状态: 下游条件引用的变量, 可在跳转前设定开局初始值(默认 0)
+    var panelSel = {};          // vid -> 当前选择值(默认 0)
+    var dvars = downstreamVarIds(id).filter(function (v) { return VARS_META[String(v)]; });
+    var savedEntry = savedNodeVars(id) || {};
+    dvars.forEach(function (v) {
+      panelSel[v] = savedEntry[v] != null ? Number(savedEntry[v]) : 0;
+    });
+    var playUrl = buildPlayUrl(id, panelSel);
+    h += '<p class="btn-row"><a class="btn primary" id="play-link" href="' + playUrl + '" target="_blank">▶ 从这里开始玩</a>'
        + '<a class="btn" href="' + viewUrl + '" target="_blank">进入速览 →</a></p>';
     h += '<p class="meta">「开始玩」进入纯文本模式(可回退、记录足迹); 速览直达 /plot 对应剧情节点</p>';
+    if (dvars.length) {
+      h += '<div class="var-sec" id="panel-vars">';
+      h += '<div class="var-head">变量状态 <span>点击设定开局初始值 · 默认 0 · 保存最近 10 个节点</span>';
+      h += '<em class="tag var-kept-tag' + (dvars.some(function (v) { return panelSel[v] !== 0; }) ? "" : " hidden") + '">已存参数</em>';
+      h += "</div>";
+      h += '<div class="var-list">';
+      dvars.forEach(function (v, vi) {
+        var meta = VARS_META[String(v)];
+        var extra = vi >= VAR_SHOW_MAX ? " var-extra hidden" : "";
+        var rowSaved = panelSel[v] !== 0 ? " var-saved" : "";
+        h += '<div class="var-row' + rowSaved + extra + '" data-var="' + v + '">';
+        h += '<span class="var-name" title="变量#' + v + '">' + esc(meta.n) + "</span>";
+        h += '<span class="var-btns">';
+        meta.p.forEach(function (pv) {
+          var lab = meta.kind === "bool" ? (pv === 0 ? "否" : "是") : String(pv);
+          h += '<button type="button" class="vbtn' + (panelSel[v] === pv ? " on" : "") + '" data-v="' + pv + '">' + lab + "</button>";
+        });
+        h += "</span></div>";
+      });
+      if (dvars.length > VAR_SHOW_MAX) {
+        h += '<button type="button" class="var-more">还有 ' + (dvars.length - VAR_SHOW_MAX) + " 项变量 ▾</button>";
+      }
+      h += "</div></div>";
+    }
     h += "</div>";
 
     // 来源（左）与去向（右）横向排列; 跨树目标标注 ↗, 点击后切换章节树
@@ -558,6 +656,46 @@ function init(data) {
         gotoNode(Number(a.dataset.goto));
       });
     });
+
+    // ---- 变量状态区交互 ----
+    var varSec = document.getElementById("panel-vars");
+    if (varSec) {
+      function refreshVarUi() {
+        var kept = false;
+        varSec.querySelectorAll(".var-row").forEach(function (row) {
+          var vid = Number(row.dataset.var);
+          var isNonDefault = panelSel[vid] !== 0;
+          row.classList.toggle("var-saved", isNonDefault);
+          if (isNonDefault) kept = true;
+          row.querySelectorAll(".vbtn").forEach(function (x) {
+            x.classList.toggle("on", Number(x.dataset.v) === panelSel[vid]);
+          });
+        });
+        var tag = varSec.querySelector(".var-kept-tag");
+        if (tag) tag.classList.toggle("hidden", !kept);
+        var link = document.getElementById("play-link");
+        if (link) link.href = buildPlayUrl(id, panelSel);
+      }
+      varSec.querySelectorAll(".var-row").forEach(function (row) {
+        var vid = Number(row.dataset.var);
+        row.querySelectorAll(".vbtn").forEach(function (b) {
+          b.addEventListener("click", function (ev) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            panelSel[vid] = Number(b.dataset.v);
+            upsertNodeVars(id, panelSel);  // 队列: 最近使用在前, 超过 10 个踢最旧
+            refreshVarUi();
+          });
+        });
+      });
+      var moreBtn = varSec.querySelector(".var-more");
+      if (moreBtn) moreBtn.addEventListener("click", function (ev) {
+        ev.preventDefault();
+        var folded = moreBtn.textContent.indexOf("▾") >= 0;
+        varSec.querySelectorAll(".var-extra").forEach(function (r) { r.classList.toggle("hidden", !folded); });
+        moreBtn.textContent = folded ? "收起变量 ▴" : "还有 " + (dvars.length - VAR_SHOW_MAX) + " 项变量 ▾";
+      });
+    }
   }
 
   /* ---------- 视图切换与节点定位 ---------- */
@@ -766,8 +904,10 @@ function init(data) {
     footBtn.textContent = footOn ? "隐藏足迹" : "我的足迹";
     footBtn.classList.toggle("active", footOn);
   }
+  updateFootBtn();  // 默认开启时同步按钮初始态
   if (footBtn) footBtn.addEventListener("click", function () {
     footOn = !footOn;
+    try { localStorage.setItem("qf_foot_on", footOn ? "1" : "0"); } catch (e) { }
     loadFoot(); // 回来可能有新足迹
     updateFootBtn();
     rebuild();

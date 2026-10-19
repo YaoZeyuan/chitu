@@ -90,6 +90,9 @@
     var id = vid(m[1]), op = m[2], rhs = m[3].trim();
     var rm = rhs.match(/^数值：?\[(\d+)/);
     var rv = rm ? (vars[vid(rm[1])] || 0) : (parseFloat(rhs) || 0);
+    // 分支图种子粘性: 故事开局的"清零初始化"不覆盖种子值,
+    // 种子语义 = 「走到该节点时已累计的取值」, 后续 += 在其上累加
+    if (op === "=" && rv === 0 && seedVars && seedVars[id] != null) return;
     if (op === "=" ) vars[id] = rv;
     else if (op === "+" || op === "＋" || op === "+=" || op === "＋=") vars[id] = (vars[id] || 0) + rv;
     else vars[id] = (vars[id] || 0) - rv;
@@ -532,6 +535,7 @@
 
   // ---------------------------------------------------------------- 回退/重开
   var runStart = 1;   // 本局开局故事: 回退重放必须从这里开始(前段 set_var 才能正确恢复)
+  var seedVars = null; // 分支图带来的初始变量(?v=9:8,10:1), 仅新局生效, 回退重建不受影响
   function persistChain() { lsSet(LS_CHAIN, chain); lsSet(LS_RUNSTART, runStart); }
 
   function replayAll(startSid, forceLive) {
@@ -543,12 +547,28 @@
     pendingInvest = null;
     ended = false;
     vars = {};
-    chainIdx = 0;
-    waiting = false;
     var resume = chain.length > 0;   // 有选择链: rebuild 重建历史; 无链: 从头直播
     mode = resume ? "rebuild" : "live";
+    if (seedVars && !resume) {
+      Object.keys(seedVars).forEach(function (k) { vars[k] = seedVars[k]; });
+      appendSeedNote();
+    }
+    chainIdx = 0;
+    waiting = false;
     startStory(startSid);
     step();
+  }
+
+  // 分支图初始变量提示(变量名来自 branch_vars.json, 加载失败则显示编号)
+  function appendSeedNote() {
+    var meta = window.__VARS_META__ || {};
+    var parts = Object.keys(seedVars).map(function (k) {
+      return (meta[k] ? meta[k].n : "变量#" + k) + " = " + seedVars[k];
+    });
+    var d = document.createElement("div");
+    d.className = "seed-note";
+    d.textContent = "⚑ 分支图初始变量: " + parts.join(" · ");
+    flowEl.appendChild(d);
   }
 
   function back(n) {
@@ -675,14 +695,24 @@
 
     var m = location.search.match(/[?&]s=(\d+)/);
     if (m && DATA.stories[m[1]]) {
-      // 带参数: 从指定故事开新局
+      // 带参数: 从指定故事开新局; ?v=9:8,10:1 设定初始变量(来自 /plot/branch 节点详情)
       startSid = Number(m[1]);
       runStart = startSid;
       chain = [];
+      var mv = decodeURIComponent(location.search).match(/[?&]v=([\d:,]+)/);
+      if (mv) {
+        seedVars = {};
+        mv[1].split(",").forEach(function (p) {
+          var kv = p.split(":");
+          var vId = parseInt(kv[0], 10), vVal = parseInt(kv[1], 10);
+          if (!isNaN(vId) && !isNaN(vVal)) seedVars[vId] = vVal;
+        });
+      }
       replayAll(runStart, true);
       var st = DATA.stories[startSid];
       appendTrans(st.name);
-      toast("已定位到「" + st.name + "」, 开新局");
+      toast("已定位到「" + st.name + "」, 开新局" +
+        (seedVars ? "(已设 " + Object.keys(seedVars).length + " 项初始变量)" : ""));
     } else {
       startSid = DATA.entry || 1;
       chain = lsGet(LS_CHAIN, []);
@@ -700,13 +730,19 @@
   }
 
   // no-cache: 剧本数据更新后浏览器必须重新协商, 避免玩到旧剧本
-  fetch("/play/js/script.json?v=20261019", { cache: "no-cache" })
-    .then(function (r) {
+  Promise.all([
+    fetch("/play/js/script.json?v=20261019b", { cache: "no-cache" }),
+    fetch("/plot/js/branch_vars.json?v=20261019b", { cache: "no-cache" })
+      .catch(function () { return null; }),
+  ])
+    .then(function (rs) {
+      var r = rs[0];
       if (!r.ok) throw new Error("script.json 加载失败: " + r.status);
-      return r.json();
+      return Promise.all([r.json(), rs[1] && rs[1].ok ? rs[1].json() : null]);
     })
-    .then(function (d) {
-      window.__PLAY_DATA__ = d;
+    .then(function (out) {
+      window.__PLAY_DATA__ = out[0];
+      if (out[1]) window.__VARS_META__ = out[1].vars || {};
       boot();
     })
     .catch(function (e) {

@@ -300,3 +300,56 @@ body.branch { overflow: hidden; }
 .lg-green { background: #2e7d32; }
 .lg-note { color: #8a8375; }
 .lg-beat { background: #fbf6e8; border: 1.5px solid #a08a3c; border-radius: 6px; }
+
+/* ---------- 节点详情 · 变量状态 ---------- */
+.hidden { display: none !important; }
+.var-sec {
+  margin: 10px 0 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #faf7f0;
+  padding: 8px 10px;
+}
+.var-sec .var-head {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.var-sec .var-head span { font-weight: 400; color: var(--muted); font-size: 11.5px; }
+.var-sec .var-kept-tag {
+  font-style: normal; font-size: 11px; border-radius: 8px; padding: 0 8px;
+  background: #d9822b; color: #fff;
+}
+.var-sec .var-list { margin-top: 6px; display: flex; flex-direction: column; gap: 4px; }
+.var-row {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12.5px; line-height: 1.5;
+  padding: 2px 4px; border-radius: 6px;
+}
+.var-row.var-saved { background: #fdf2e3; outline: 1px dashed #d9822b; }
+.var-row.var-saved .var-name::after {
+  content: "已存"; font-size: 10px; color: #d9822b;
+  border: 1px solid #d9822b; border-radius: 6px;
+  padding: 0 4px; margin-left: 6px; vertical-align: 1px;
+}
+.var-row .var-name { flex: 0 0 auto; max-width: 46%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
+.var-row .var-btns { display: flex; gap: 4px; flex-wrap: wrap; }
+.var-row .vbtn {
+  font: inherit; font-size: 12px; line-height: 1.4;
+  padding: 1px 8px; border-radius: 10px;
+  border: 1px solid var(--line); background: #fffdf8; color: var(--ink);
+  cursor: pointer;
+}
+.var-row .vbtn:hover { border-color: var(--accent); color: var(--accent); }
+.var-row .vbtn.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.var-row.var-saved .vbtn.on { background: #d9822b; border-color: #d9822b; }
+.var-more {
+  align-self: flex-start;
+  font: inherit; font-size: 12px; color: var(--blue);
+  background: none; border: none; cursor: pointer; padding: 2px 4px;
+}
+.var-more:hover { text-decoration: underline; }
