@@ -19,6 +19,7 @@
 <script setup>
 const links = [
   { name: "开始游戏", desc: "原版游戏 · 可存档", href: "/game.html", primary: true },
+  { name: "纯文本模式", desc: "对话式读剧情 · 可回退/记录足迹", href: "/play" },
   { name: "剧情脚本", desc: "原始剧本 · 速览章节", href: "/plot" },
   { name: "分支概览", desc: "全剧情分支图", href: "/plot/branch" },
   { name: "剧情解析", desc: "游戏介绍", href: "https://mp.weixin.qq.com/s/QCk0tUsYSIgUTnppGfoQRw", external: true },
