@@ -8,10 +8,14 @@
   min-height: calc(100vh - 57px);
   padding: 0 12px;
 }
-/* 左栏: 场景画幅, 吸顶固定, 与 /plot 一致恒为 16:9 */
+/* 左栏: 场景画幅, 吸顶并垂直居中, 与 /plot 一致恒为 16:9 */
 #stage-wrap {
   position: sticky;
   top: 57px;
+  height: calc(100vh - 57px);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   width: min(48%, 620px);
   flex-shrink: 0;
 }
@@ -20,7 +24,7 @@
   position: relative;
   aspect-ratio: 16 / 9;
   width: 100%;
-  margin: 12px 0 0;
+  margin: 0;
   border-radius: 10px;
   overflow: hidden;
   background: #1c1a17;
@@ -49,7 +53,7 @@
 /* 窄屏退回上下布局 */
 @media (max-width: 860px) {
   #wrap { display: block; padding: 0; }
-  #stage-wrap { position: relative; top: 0; width: 100%; }
+  #stage-wrap { position: relative; top: 0; height: auto; width: 100%; }
   #stage { max-width: 860px; margin: 12px auto 0; }
 }
 #flow p.nar, #flow p.dlg {
@@ -100,6 +104,24 @@
 #flow .opts.invest .point-visited { opacity: .45; cursor: default; }
 #flow .opts button:disabled { pointer-events: none; }  /* 已做的选择回显: 点击穿透到正文, 不吞推进点击 */
 #flow .opts .opt-end { border-style: dashed; color: var(--muted); }
+
+/* 调查答案展开区: 收纳在选项下方, 不堆进对话流 */
+#flow .invest-answer {
+  margin: -6px 0 12px;
+  padding: 2px 14px 8px;
+  border-left: 3px solid var(--line);
+  border-radius: 0 8px 8px 0;
+  background: var(--panel);
+}
+#flow .invest-answer p { margin: 10px 0 0; font-size: 15px; line-height: 1.85; }
+#flow .invest-answer p.dlg { margin-top: 12px; }
+#flow .invest-answer .who {
+  display: block;
+  font-size: 12px;
+  color: var(--accent);
+  letter-spacing: 2px;
+  margin-bottom: 2px;
+}
 
 /* 已做选择回显 */
 #flow .picked {

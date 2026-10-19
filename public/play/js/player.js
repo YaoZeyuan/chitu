@@ -33,6 +33,8 @@
   var curStoryName = "";
   var mediaOn = true;
   var flowEl, stageEl, histEl, histListEl, toastEl;
+  var paraTarget = null;   // 调查点文本收纳目标(面板内展开区), null 时写入对话流
+  var invCur = null;       // 当前展开的调查点 {node, idx, box}
 
   var bgmAudio = null;
 
@@ -111,6 +113,7 @@
 
   // ---------------------------------------------------------------- 渲染
   function appendPara(node) {
+    var parent = paraTarget || flowEl;
     var p = document.createElement("p");
     p.className = node.who ? "dlg" : "nar";
     if (node.who) {
@@ -122,7 +125,7 @@
     var span = document.createElement("span");
     span.innerHTML = node.h || "";
     p.appendChild(span);
-    flowEl.appendChild(p);
+    parent.appendChild(p);
     scrollWin();
   }
   function appendTrans(name) {
@@ -190,6 +193,16 @@
     if (!st) { flowEnd(); return; }
     curStory = Number(sid);
     curStoryName = st.name;
+    // 开局场景为空时(冷启动/?s=定位): 预应用开场直线段的第一个背景图,
+    // 原游戏此时继承标题画面/上一场景的图, 不然首几段文字没有画面
+    if (!stageEl.style.backgroundImage) {
+      for (var k = 0; k < st.items.length; k++) {
+        var n = st.items[k];
+        if (n.t === "choice" || n.t === "cond" || n.t === "invest" ||
+            n.t === "jump" || n.t === "end" || n.t === "break") break;
+        if (n.t === "pic" && n.bg) { applyMedia(n); break; }
+      }
+    }
     frames = [{ items: st.items, i: 0 }];
     footStory(curStory);
   }
@@ -203,6 +216,13 @@
       if (fr.i >= fr.items.length) {
         if (fr.inv && !fr.brkDone) {
           if (!fr.anchor) frames.pop();  // 调查点/退出项体帧: 弹出后回面板
+          // 调查点体执行完毕: 答案收纳到面板展开区, 不再留在对话流
+          if (invCur && invCur.node === fr.inv) {
+            invCur.node.answers = invCur.node.answers || {};
+            invCur.node.answers[invCur.idx] = invCur.box.innerHTML;
+            invCur = null;
+            paraTarget = null;
+          }
           // anchor 锚帧: 常驻栈上, 作为 loop_break 的截断点; 玩家操作驱动后续
           if (mode === "rebuild") {
             if (!consumeInvestEntry(fr.inv)) return; // chain 耗尽→转live并停
@@ -251,6 +271,12 @@
               frames.length = fi + 1;
               break;
             }
+          }
+          if (invCur) {  // 调查中途被打断: 已有内容存为答案, 收纳状态复位
+            invCur.node.answers = invCur.node.answers || {};
+            invCur.node.answers[invCur.idx] = invCur.box.innerHTML;
+            invCur = null;
+            paraTarget = null;
           }
           break;
         case "jump": {
@@ -304,10 +330,12 @@
       chainIdx++;
       if (e.v >= 0 && inv.points[e.v]) {
         investVisited[e.v] = true;
-        appendPicked("调查:" + inv.points[e.v].name);
+        // 文本收纳到 detached 展开区, 结束后存入 answers, 由面板统一渲染
+        var box = document.createElement("div");
+        invCur = { node: inv, idx: e.v, box: box };
+        paraTarget = box;
         frames.push({ items: inv.points[e.v].body, i: 0, inv: inv });
       } else if (e.v < 0 && inv.exit) {
-        appendPicked(inv.exit.name);
         frames.push({ items: inv.exit.body, i: 0, inv: inv, isSeq: true });
       }
       if (chainIdx >= chain.length) finishReplay();
@@ -371,8 +399,17 @@
   function showInvest(node) {
     pendingInvest = node;
     pendingChoice = null;
-    var box = document.createElement("div");
-    box.className = "opts invest";
+    // 同一次调查共用一个面板(原地刷新), 不再每次追加新面板堆积对话流
+    var box;
+    if (node._panel && node._panel.isConnected) {
+      box = node._panel;
+      box.innerHTML = "";
+    } else {
+      box = document.createElement("div");
+      box.className = "opts invest";
+      node._panel = box;
+      flowEl.appendChild(box);
+    }
     pendingBox = box;
     var tip = document.createElement("div");
     tip.style.cssText = "font-size:13px;color:var(--muted);margin-bottom:4px";
@@ -380,13 +417,23 @@
     box.appendChild(tip);
     node.points.forEach(function (p, idx) {
       var b = document.createElement("button");
+      b.dataset.idx = idx;
       b.innerHTML = (investVisited[idx] ? "✓ " : "") + esc(p.name);
       if (investVisited[idx]) { b.className = "point-visited"; b.disabled = true; }  // 已调查过: 禁止重复
-      b.addEventListener("click", function (ev) {
-        ev.stopPropagation();
-        pickInvest(idx);
-      });
+      else {
+        b.addEventListener("click", function (ev) {
+          ev.stopPropagation();
+          pickInvest(idx);
+        });
+      }
       box.appendChild(b);
+      // 已调查的点: 答案展开在选项下方
+      if (investVisited[idx] && node.answers && node.answers[idx]) {
+        var ans = document.createElement("div");
+        ans.className = "invest-answer";
+        ans.innerHTML = node.answers[idx];
+        box.appendChild(ans);
+      }
     });
     var endBtn = document.createElement("button");
     endBtn.className = "opt-end";
@@ -401,7 +448,6 @@
       pickInvest(-1);
     });
     box.appendChild(endBtn);
-    flowEl.appendChild(box);
     scrollWin();
   }
 
@@ -410,17 +456,30 @@
     disableBox();
     footStory(curStory);
     pendingInvest = null;
-    var label = idx >= 0 ? "调查:" + node.points[idx].name : (node.exit ? node.exit.name : "结束调查");
-    chain.push({ s: curStory, k: "p", v: idx, t: label });
-    persistChain();
-    renderHistory();
-    appendPicked(label);
     if (idx >= 0) {
       investVisited[idx] = true;
+      var label = "调查:" + node.points[idx].name;
+      chain.push({ s: curStory, k: "p", v: idx, t: label });
+      persistChain();
+      renderHistory();
+      // 答案展开区: 插在刚点的选项下方, 该点文本收纳于此
+      var box = document.createElement("div");
+      box.className = "invest-answer";
+      var btn = node._panel && node._panel.querySelector('button[data-idx="' + idx + '"]');
+      if (btn) btn.insertAdjacentElement("afterend", box);
+      invCur = { node: node, idx: idx, box: box };
+      paraTarget = box;
       frames.push({ items: node.points[idx].body, i: 0, inv: node });
-    } else if (node.exit) {
-      // 问答菜单的退出项: 体内条件决定放行(loop_break)或劝回(回到面板)
-      frames.push({ items: node.exit.body, i: 0, inv: node, isSeq: true });
+    } else {
+      paraTarget = null;
+      var label2 = node.exit ? node.exit.name : "结束调查";
+      chain.push({ s: curStory, k: "p", v: -1, t: label2 });
+      persistChain();
+      renderHistory();
+      if (node.exit) {
+        // 问答菜单的退出项: 体内条件决定放行(loop_break)或劝回(回到面板)
+        frames.push({ items: node.exit.body, i: 0, inv: node, isSeq: true });
+      }
     }
     step();
   }
@@ -640,7 +699,8 @@
     }
   }
 
-  fetch("/play/js/script.json")
+  // no-cache: 剧本数据更新后浏览器必须重新协商, 避免玩到旧剧本
+  fetch("/play/js/script.json?v=20261019", { cache: "no-cache" })
     .then(function (r) {
       if (!r.ok) throw new Error("script.json 加载失败: " + r.status);
       return r.json();
