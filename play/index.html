@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>潜伏之赤途 · 纯文本模式</title>
 <link rel="stylesheet" href="/plot/css/style.css?v=20261019c">
-<link rel="stylesheet" href="/play/css/style.css?v=20261019d">
+<link rel="stylesheet" href="/play/css/style.css?v=20261019e">
 </head>
 <body>
 <header class="topbar">
@@ -14,6 +14,7 @@
   <button class="btn" id="btn-key" title="退回最近的关键抉择 (★)">↩ 关键抉择</button>
   <button class="btn" id="btn-restart" title="从头开始 (清空本局)">⟲ 重开</button>
   <span class="spacer"></span>
+  <button class="btn" id="btn-chapter" title="章节列表 · 从指定章节开始">☰ 章节</button>
   <button class="btn" id="btn-media" title="显示/关闭 立绘背景与音乐">🖼 媒体:开</button>
   <button class="btn" id="btn-history" title="显示/隐藏 来时路线">☰ 路线</button>
   <a class="btn" href="/plot/branch">分支图</a>
@@ -22,13 +23,14 @@
   <div id="stage-wrap" class="has-media"><div id="stage-zone"><div id="stage"></div></div><div id="opts-dock"></div></div>
   <article id="flow" tabindex="0"></article>
 </main>
+<aside id="chapter-menu" class="hidden"></aside>
 <aside id="history" class="hidden">
   <h2>来时路线</h2>
   <ol id="hist-list"></ol>
   <p class="hist-tip">点击任意一步可退回到该选择之前</p>
 </aside>
 <div id="toast" class="hidden"></div>
-<script src="/play/js/player.js?v=20261019d"></script>
+<script src="/play/js/player.js?v=20261019e"></script>
 <!-- Vercel Analytics -->
 <script type="module" src="/src/plot-main.js"></script>
 </body>

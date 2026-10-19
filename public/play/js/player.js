@@ -38,6 +38,53 @@
 
   var bgmAudio = null;
 
+  // ---------------------------------------------------------------- 章节
+  // 章标记故事: 名字恰为「序章/第X章/终章」; 全部经 jump 进入, 在 startStory 挂横幅即可覆盖
+  var CH_RE = /^(序章|第[一二三四五六七八九十百]+章|终章)$/;
+  var CHAPTERS = [];       // [{sid, name, rank}] 按剧情顺序排列
+  function chRank(name) {  // 章节排序: 序章=0, 一二三四…=1..n, 终章=900
+    if (name === "序章") return 0;
+    if (name === "终章") return 900;
+    var DIG = { "一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9 };
+    var s = name.slice(1, -1), v = 0, ti = s.indexOf("十");
+    if (ti >= 0) {
+      v += (ti > 0 ? DIG[s[ti - 1]] : 1) * 10;
+      if (s.length > ti + 1) v += DIG[s[ti + 1]] || 0;
+      return v;
+    }
+    for (var i = 0; i < s.length; i++) v = v * 10 + (DIG[s[i]] || 0);
+    return v;
+  }
+  function buildChapters() {
+    Object.keys(DATA.stories).forEach(function (sid) {
+      var st = DATA.stories[sid];
+      if (CH_RE.test(st.name)) CHAPTERS.push({ sid: Number(sid), name: st.name, rank: chRank(st.name) });
+    });
+    CHAPTERS.sort(function (a, b) { return a.rank - b.rank || a.sid - b.sid; });
+  }
+  function appendChapterMark(name) {
+    var d = document.createElement("div");
+    d.className = "chapter-mark";
+    var s = document.createElement("span");
+    s.textContent = name;
+    d.appendChild(s);
+    flowEl.appendChild(d);
+    scrollWin();
+  }
+  // 从指定章节开新局: 不带之前章节的数值(与分支图跳转同语义)
+  function jumpChapter(ch) {
+    $("chapter-menu").classList.add("hidden");
+    stopBgm();
+    startSid = ch.sid;
+    runStart = ch.sid;
+    chain = [];
+    seedVars = null;
+    renderHistory();
+    history.replaceState(null, "", "/play/?s=" + ch.sid);
+    replayAll(runStart, true);
+    toast("已从「" + ch.name + "」开始新的一局");
+  }
+
   // ---------------------------------------------------------------- utils
   function $(id) { return document.getElementById(id); }
   function lsGet(k, d) {
@@ -198,6 +245,8 @@
     if (!st) { flowEnd(); return; }
     curStory = Number(sid);
     curStoryName = st.name;
+    // 进入章节标记故事: 对话流插入醒目章节横幅
+    if (CH_RE.test(st.name)) appendChapterMark(st.name);
     // 开局场景为空时(冷启动/?s=定位): 预应用开场直线段的第一个背景图,
     // 原游戏此时继承标题画面/上一场景的图, 不然首几段文字没有画面
     if (!stageEl.style.backgroundImage) {
@@ -667,6 +716,25 @@
     }
   });
 
+  // ---------------------------------------------------------------- 章节菜单
+  function bindChapterMenu() {
+    var btn = $("btn-chapter"), menu = $("chapter-menu");
+    if (!btn || !menu) return;
+    var hint = document.createElement("div");
+    hint.className = "hint";
+    hint.textContent = "从指定章节开始新的一局 (不带之前章节的数值)";
+    menu.appendChild(hint);
+    CHAPTERS.forEach(function (ch) {
+      var b = document.createElement("button");
+      b.textContent = ch.name;
+      b.addEventListener("click", function () { jumpChapter(ch); });
+      menu.appendChild(b);
+    });
+    btn.addEventListener("click", function () {
+      menu.classList.toggle("hidden");
+    });
+  }
+
   // ---------------------------------------------------------------- 顶栏按钮
   function bindTopbar() {
     $("btn-back").addEventListener("click", function () { back(1); });
@@ -706,6 +774,9 @@
     // 点击屏幕任意处推进剧情(按钮/链接/历史面板除外);
     // 等待选择时 waiting=false, advance() 无操作, 不会误跳选项
     document.addEventListener("click", function (ev) {
+      var cm = $("chapter-menu");
+      if (cm && !cm.classList.contains("hidden") &&
+          !ev.target.closest("#chapter-menu, #btn-chapter")) cm.classList.add("hidden");
       if (ev.target && ev.target.closest && ev.target.closest("button, a, #history")) return;
       advance();
     });
@@ -713,6 +784,8 @@
 
     DATA = window.__PLAY_DATA__;
     DATA.keyAnchors.forEach(function (a) { KEY_ANCHORS[a] = true; });
+    buildChapters();
+    bindChapterMenu();
 
     var m = location.search.match(/[?&]s=(\d+)/);
     if (m && DATA.stories[m[1]]) {
@@ -731,7 +804,7 @@
       }
       replayAll(runStart, true);
       var st = DATA.stories[startSid];
-      appendTrans(st.name);
+      if (!CH_RE.test(st.name)) appendTrans(st.name);  // 章标记已由 startStory 挂横幅, 不重复
       toast("已定位到「" + st.name + "」, 开新局" +
         (seedVars ? "(已设 " + Object.keys(seedVars).length + " 项初始变量)" : ""));
     } else {
