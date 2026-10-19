@@ -32,7 +32,7 @@
   var curStory = 0;
   var curStoryName = "";
   var mediaOn = true;
-  var flowEl, stageEl, histEl, histListEl, toastEl;
+  var flowEl, stageEl, histEl, histListEl, toastEl, optsDock;
   var paraTarget = null;   // 调查点文本收纳目标(面板内展开区), null 时写入对话流
   var invCur = null;       // 当前展开的调查点 {node, idx, box}
 
@@ -148,7 +148,7 @@
     d.textContent = "▶ " + txt;
     flowEl.appendChild(d);
   }
-  function clearFlow() { flowEl.innerHTML = ""; }
+  function clearFlow() { flowEl.innerHTML = ""; if (optsDock) optsDock.innerHTML = ""; }
   function resetStage() {
     stageEl.innerHTML = "";
     stageEl.style.backgroundImage = "";
@@ -334,7 +334,7 @@
     if (e && e.k === "p") {
       chainIdx++;
       if (e.v >= 0 && inv.points[e.v]) {
-        investVisited[e.v] = true;
+        vmapOf(inv)[e.v] = true;
         // 文本收纳到 detached 展开区, 结束后存入 answers, 由面板统一渲染
         var box = document.createElement("div");
         invCur = { node: inv, idx: e.v, box: box };
@@ -359,7 +359,14 @@
   var pendingChoice = null;
   var pendingInvest = null;
   var pendingBox = null;
-  var investVisited = {};
+  // 已访调查点按面板隔离: 全局对象会让序章问答菜单点过的下标串扰到后续调查面板
+  // (薛梅/黄正义/李忠国/张爱民 全部显示 ✓ 不可点的根因), replayAll 时整体清空
+  var investVisited = new Map();  // invest 节点对象 -> {idx:true}
+  function vmapOf(node) {
+    var m = investVisited.get(node);
+    if (!m) { m = {}; investVisited.set(node, m); }
+    return m;
+  }
   function disableBox() {
     if (!pendingBox) return;
     pendingBox.querySelectorAll("button").forEach(function (b) { b.disabled = true; });
@@ -382,14 +389,17 @@
       });
       box.appendChild(b);
     });
-    flowEl.appendChild(box);
-    scrollWin();
+    // 选项渲染在左栏底部停靠区(图片下方), 避免误点击对话流推进
+    optsDock.appendChild(box);
   }
 
   function pickChoice(idx) {
     if (!pendingChoice) return;
     var o = pendingChoice.opts[idx];
+    var box = pendingBox;
     disableBox();
+    // 已选选项盒移回对话流留档(与回显行一起), 腾空 dock
+    if (box && box.parentNode === optsDock) flowEl.appendChild(box);
     footStory(curStory);
     pendingChoice = null;
     chain.push({ s: curStory, k: "c", v: idx, t: o.txt, a: o.a });
@@ -409,11 +419,13 @@
     if (node._panel && node._panel.isConnected) {
       box = node._panel;
       box.innerHTML = "";
+      // 问答菜单劝回: 面板刚被移回对话流留档, 搬回 dock 继续用(同一元素, 不会留副本)
+      if (box.parentNode !== optsDock) optsDock.appendChild(box);
     } else {
       box = document.createElement("div");
       box.className = "opts invest";
       node._panel = box;
-      flowEl.appendChild(box);
+      optsDock.appendChild(box);   // 调查/问答面板也放左栏底部停靠区
     }
     pendingBox = box;
     var tip = document.createElement("div");
@@ -421,10 +433,11 @@
     tip.textContent = "可自由调查以下地点:";
     box.appendChild(tip);
     node.points.forEach(function (p, idx) {
+      var vm = vmapOf(node);
       var b = document.createElement("button");
       b.dataset.idx = idx;
-      b.innerHTML = (investVisited[idx] ? "✓ " : "") + esc(p.name);
-      if (investVisited[idx]) { b.className = "point-visited"; b.disabled = true; }  // 已调查过: 禁止重复
+      b.innerHTML = (vm[idx] ? "✓ " : "") + esc(p.name);
+      if (vm[idx]) { b.className = "point-visited"; b.disabled = true; }  // 已调查过: 禁止重复
       else {
         b.addEventListener("click", function (ev) {
           ev.stopPropagation();
@@ -433,7 +446,7 @@
       }
       box.appendChild(b);
       // 已调查的点: 答案展开在选项下方
-      if (investVisited[idx] && node.answers && node.answers[idx]) {
+      if (vm[idx] && node.answers && node.answers[idx]) {
         var ans = document.createElement("div");
         ans.className = "invest-answer";
         ans.innerHTML = node.answers[idx];
@@ -462,7 +475,7 @@
     footStory(curStory);
     pendingInvest = null;
     if (idx >= 0) {
-      investVisited[idx] = true;
+      vmapOf(node)[idx] = true;
       var label = "调查:" + node.points[idx].name;
       chain.push({ s: curStory, k: "p", v: idx, t: label });
       persistChain();
@@ -481,6 +494,8 @@
       chain.push({ s: curStory, k: "p", v: -1, t: label2 });
       persistChain();
       renderHistory();
+      // 退出调查: 面板(含全部答案)移回对话流留档, 腾空 dock
+      if (node._panel && node._panel.parentNode === optsDock) flowEl.appendChild(node._panel);
       if (node.exit) {
         // 问答菜单的退出项: 体内条件决定放行(loop_break)或劝回(回到面板)
         frames.push({ items: node.exit.body, i: 0, inv: node, isSeq: true });
@@ -544,7 +559,7 @@
     stopBgm();
     clearFlow();
     resetStage();
-    investVisited = {};
+    investVisited.clear();
     pendingChoice = null;
     pendingInvest = null;
     ended = false;
@@ -684,6 +699,7 @@
   function boot() {
     flowEl = $("flow");
     stageEl = $("stage");
+    optsDock = $("opts-dock");
     histEl = $("history");
     histListEl = $("hist-list");
     toastEl = $("toast");

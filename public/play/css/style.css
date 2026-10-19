@@ -8,14 +8,13 @@
   min-height: calc(100vh - 57px);
   padding: 0 12px;
 }
-/* 左栏: 场景画幅, 吸顶并垂直居中, 与 /plot 一致恒为 16:9 */
+/* 左栏: 场景画幅(在选项区之上的剩余空间垂直居中) + 选项停靠区(靠底) */
 #stage-wrap {
   position: sticky;
   top: 57px;
   height: calc(100vh - 57px);
   display: flex;
   flex-direction: column;
-  justify-content: center;
   width: min(48%, 620px);
   flex-shrink: 0;
 }
@@ -24,7 +23,7 @@
   position: relative;
   aspect-ratio: 16 / 9;
   width: 100%;
-  margin: 0;
+  margin: auto 0;  /* flex 列内 auto 边距: 在剩余空间垂直居中 */
   border-radius: 10px;
   overflow: hidden;
   background: #1c1a17;
@@ -33,6 +32,14 @@
   border: 1px solid var(--line);
   box-shadow: 0 4px 14px rgba(50, 40, 20, .14);
 }
+/* 选项停靠区: 固定在左栏底部, 选项不再放对话流里(防误点击推进) */
+#opts-dock {
+  flex-shrink: 0;
+  padding: 10px 12px 16px 0;
+  max-height: 62vh;
+  overflow-y: auto;
+}
+#opts-dock:empty { display: none; }
 /* 注意: 不要用 #stage:empty 隐藏空舞台——背景图是 backgroundImage 属性而非子元素,
    "只有背景没有立绘"的场景(如序章开头)会被误判为空而整体不可见 */
 #stage .spic {
@@ -56,6 +63,7 @@
   #wrap { display: block; padding: 0; }
   #stage-wrap { position: relative; top: 0; height: auto; width: 100%; }
   #stage { max-width: 860px; margin: 12px auto 0; }
+  #opts-dock { padding: 8px 12px; }
 }
 #flow p.nar, #flow p.dlg {
   margin: 0 0 14px;
@@ -88,9 +96,10 @@
   margin: 34px 0;
 }
 
-/* 选项 */
-#flow .opts { margin: 26px 0 10px; display: flex; flex-direction: column; gap: 10px; }
-#flow .opts button {
+/* 选项 (对话流回显 + 左栏 dock 两处) */
+.opts { margin: 26px 0 10px; display: flex; flex-direction: column; gap: 10px; }
+#opts-dock .opts { margin: 0; }
+.opts button {
   font: inherit;
   font-size: 16px;
   text-align: left;
@@ -101,22 +110,22 @@
   cursor: pointer;
   transition: border-color .15s, transform .1s;
 }
-#flow .opts button:hover { border-color: var(--accent); transform: translateX(4px); }
-#flow .opts.invest .point-visited { opacity: .45; cursor: default; }
-#flow .opts button:disabled { pointer-events: none; }  /* 已做的选择回显: 点击穿透到正文, 不吞推进点击 */
-#flow .opts .opt-end { border-style: dashed; color: var(--muted); }
+.opts button:hover { border-color: var(--accent); transform: translateX(4px); }
+.opts.invest .point-visited { opacity: .45; cursor: default; }
+.opts button:disabled { pointer-events: none; }  /* 已做的选择回显: 点击穿透到正文, 不吞推进点击 */
+.opts .opt-end { border-style: dashed; color: var(--muted); }
 
 /* 调查答案展开区: 收纳在选项下方, 不堆进对话流 */
-#flow .invest-answer {
+.invest-answer {
   margin: -6px 0 12px;
   padding: 2px 14px 8px;
   border-left: 3px solid var(--line);
   border-radius: 0 8px 8px 0;
   background: var(--panel);
 }
-#flow .invest-answer p { margin: 10px 0 0; font-size: 15px; line-height: 1.85; }
-#flow .invest-answer p.dlg { margin-top: 12px; }
-#flow .invest-answer .who {
+.invest-answer p { margin: 10px 0 0; font-size: 15px; line-height: 1.85; }
+.invest-answer p.dlg { margin-top: 12px; }
+.invest-answer .who {
   display: block;
   font-size: 12px;
   color: var(--accent);
