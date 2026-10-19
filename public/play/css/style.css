@@ -8,22 +8,28 @@
   min-height: calc(100vh - 57px);
   padding: 0 12px;
 }
-/* 左栏: 场景画幅(在选项区之上的剩余空间垂直居中) + 选项停靠区(靠底) */
+/* 左栏: 图片固定在左上区域(区内垂直居中) + 选项停靠区固定在左下(靠底),
+   两块区域边界固定, 选项出现/消失时图片不再上下跳动 */
 #stage-wrap {
   position: sticky;
   top: 57px;
   height: calc(100vh - 57px);
-  display: flex;
-  flex-direction: column;
   width: min(48%, 620px);
   flex-shrink: 0;
 }
 #stage-wrap.hidden-stage { display: none; }
+/* 图片区: 固定占上方空间(底界 = dock 最大高度), 图片在其中垂直居中 */
+#stage-zone {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  bottom: 38vh;
+  display: flex;
+  align-items: center;
+}
 #stage {
   position: relative;
   aspect-ratio: 16 / 9;
   width: 100%;
-  margin: auto 0;  /* flex 列内 auto 边距: 在剩余空间垂直居中 */
   border-radius: 10px;
   overflow: hidden;
   background: #1c1a17;
@@ -32,12 +38,13 @@
   border: 1px solid var(--line);
   box-shadow: 0 4px 14px rgba(50, 40, 20, .14);
 }
-/* 选项停靠区: 固定在左栏底部, 选项不再放对话流里(防误点击推进) */
+/* 选项停靠区: 固定在左栏底部(靠底), 内容超高时内部滚动 */
 #opts-dock {
-  flex-shrink: 0;
-  padding: 10px 12px 16px 0;
-  max-height: 62vh;
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  max-height: 38vh;
   overflow-y: auto;
+  padding: 10px 12px 16px 0;
 }
 #opts-dock:empty { display: none; }
 /* 注意: 不要用 #stage:empty 隐藏空舞台——背景图是 backgroundImage 属性而非子元素,
@@ -62,8 +69,9 @@
 @media (max-width: 860px) {
   #wrap { display: block; padding: 0; }
   #stage-wrap { position: relative; top: 0; height: auto; width: 100%; }
+  #stage-zone { position: static; display: block; }
   #stage { max-width: 860px; margin: 12px auto 0; }
-  #opts-dock { padding: 8px 12px; }
+  #opts-dock { position: static; max-height: none; padding: 8px 12px; }
 }
 #flow p.nar, #flow p.dlg {
   margin: 0 0 14px;

@@ -703,8 +703,10 @@
     histEl = $("history");
     histListEl = $("hist-list");
     toastEl = $("toast");
-    flowEl.addEventListener("click", function (ev) {
-      if (ev.target.closest("button, a")) return;
+    // 点击屏幕任意处推进剧情(按钮/链接/历史面板除外);
+    // 等待选择时 waiting=false, advance() 无操作, 不会误跳选项
+    document.addEventListener("click", function (ev) {
+      if (ev.target && ev.target.closest && ev.target.closest("button, a, #history")) return;
       advance();
     });
     bindTopbar();
