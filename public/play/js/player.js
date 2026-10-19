@@ -154,7 +154,9 @@
     stageEl.style.backgroundImage = "";
   }
 
+  var lastBgNode = null;   // 最近一次背景图节点: 媒体从关到开时补放当前场景
   function applyMedia(node) {
+    if (node.t === "pic" && node.bg) lastBgNode = node;  // 无论开关都记录, 开媒体时补放
     if (!mediaOn) return;
     if (node.t === "pic") {
       if (node.bg) {
@@ -672,6 +674,7 @@
       lsSet(LS_MEDIA, mediaOn);
       paintMedia();
       if (!mediaOn) stopBgm();
+      else if (lastBgNode) applyMedia(lastBgNode);  // 后开媒体: 补放当前场景背景
     });
   }
 

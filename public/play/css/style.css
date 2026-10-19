@@ -33,7 +33,8 @@
   border: 1px solid var(--line);
   box-shadow: 0 4px 14px rgba(50, 40, 20, .14);
 }
-#stage:empty { visibility: hidden; margin: 0; border: none; box-shadow: none; }
+/* 注意: 不要用 #stage:empty 隐藏空舞台——背景图是 backgroundImage 属性而非子元素,
+   "只有背景没有立绘"的场景(如序章开头)会被误判为空而整体不可见 */
 #stage .spic {
   position: absolute; inset: 0;
   width: 100%; height: 100%; display: block;
