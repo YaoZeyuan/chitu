@@ -17,8 +17,9 @@
   width: min(48%, 620px);
   flex-shrink: 0;
 }
-#stage-wrap.hidden-stage { display: none; }
-/* 图片区: 固定占上方空间(底界 = dock 最大高度), 图片在其中垂直居中 */
+/* 图片区: 固定占上方空间(底界 = dock 最大高度), 图片在其中垂直居中
+   媒体关(hidden-stage)只藏图片区, 选项停靠区(opts-dock)必须保持可见 */
+#stage-wrap.hidden-stage #stage-zone { display: none; }
 #stage-zone {
   position: absolute;
   top: 0; left: 0; right: 0;
@@ -83,15 +84,18 @@
     overflow: hidden;
     padding: 0;
   }
-  /* display:contents 让 stage/opts-dock 直接成为 #wrap 的 flex 子项, 以便用 order 重排 */
+  /* display:contents 让 stage/opts-dock 直接成为 #wrap 的 flex 子项, 以便用 order 重排
+     hidden-stage 只作用于图片区(stage-zone), 选项停靠区不受媒体开关影响 */
   #stage-wrap { display: contents; }
-  #stage-wrap.hidden-stage { display: none; }
+  #stage-wrap.hidden-stage #stage-zone { display: none; }
   #stage-zone {
     position: static;
     order: 0;
     flex: 0 0 auto;
     display: flex;
     align-items: center;
+    width: 100%;          /* flex 子项宽度必须显式撑满, 否则内部 width:100% 的舞台互相依赖塌缩成 0 */
+    box-sizing: border-box;
     padding: 8px 12px 0;
   }
   #stage { width: 100%; max-width: 520px; margin: 0 auto; }
