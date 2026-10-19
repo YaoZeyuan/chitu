@@ -107,6 +107,7 @@
   function scrollFlow() { flowEl.scrollTop = flowEl.scrollHeight; }
   // flow 所在容器滚动: 让最新内容可见
   function scrollWin() {
+    flowEl.scrollTop = flowEl.scrollHeight;  // flow 为独立滚动容器时生效(手机端三段布局); 桌面端 overflow 可见, 赋值无操作
     var r = flowEl.getBoundingClientRect();
     if (r.bottom > window.innerHeight + 60) window.scrollTo(0, document.body.scrollHeight);
   }

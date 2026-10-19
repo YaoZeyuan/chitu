@@ -66,13 +66,51 @@
   outline: none;
 }
 
-/* 窄屏退回上下布局 */
+/* 窄屏(手机端): App 式三段布局
+   图片(上) / 剧情流(中,独立滚动,始终显示最新一句) / 选项(下,固定)
+   不再用上下堆叠的文档流——否则最新剧情永远在页面最底部, 每次更新都要往下翻 */
 @media (max-width: 860px) {
-  #wrap { display: block; padding: 0; }
-  #stage-wrap { position: relative; top: 0; height: auto; width: 100%; }
-  #stage-zone { position: static; display: block; }
-  #stage { max-width: 860px; margin: 12px auto 0; }
-  #opts-dock { position: static; max-height: none; padding: 8px 12px; }
+  /* 三段布局占满视口, 锁死页面级滚动(所有滚动发生在 flow 内部)
+     body 弹性列布局: 顶栏高度随按钮换行自适应(窄屏远超桌面的 57px, 不能写死) */
+  html, body { overflow: hidden; height: 100%; }
+  body { display: flex; flex-direction: column; }
+  .topbar { flex: 0 0 auto; }
+  #wrap {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 0;
+    min-height: 0;
+    overflow: hidden;
+    padding: 0;
+  }
+  /* display:contents 让 stage/opts-dock 直接成为 #wrap 的 flex 子项, 以便用 order 重排 */
+  #stage-wrap { display: contents; }
+  #stage-wrap.hidden-stage { display: none; }
+  #stage-zone {
+    position: static;
+    order: 0;
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    padding: 8px 12px 0;
+  }
+  #stage { width: 100%; max-width: 520px; margin: 0 auto; }
+  #flow {
+    order: 1;
+    flex: 1 1 0;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 14px 16px 18px;
+  }
+  #opts-dock {
+    position: static;
+    order: 2;
+    flex: 0 0 auto;
+    max-height: 40vh;
+    padding: 8px 12px 12px;
+    border-top: 1px solid var(--line);
+  }
 }
 #flow p.nar, #flow p.dlg {
   margin: 0 0 14px;
