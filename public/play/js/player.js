@@ -670,28 +670,97 @@
   }
 
   // ---------------------------------------------------------------- 历史侧栏
+  // 故事归属章节: 自身是章标记则取自身; 否则取 sid ≤ 它的最大章标记(按数据编写序号区间);
+  // 序号 1(介绍) 等章前内容与个别编号错位故事(如 44/45 归四/五交界)按此规则就近归属
+  function chapterOfStory(sid) {
+    sid = Number(sid);
+    var st = DATA.stories[sid];
+    if (st && CH_RE.test(st.name)) return sid;
+    var best = null;
+    Object.keys(DATA.stories).forEach(function (k) {
+      var n = Number(k);
+      if (CH_RE.test(DATA.stories[k].name) && n <= sid && (best === null || n > best)) best = n;
+    });
+    return best;
+  }
+  var histExpanded = {};  // 章节 sid -> 是否展开
+  var histLastCur = null; // 上次渲染的当前章: 变章时重置展开态(默认只展开当前章)
+
   function renderHistory() {
-    histListEl.innerHTML = "";
+    // 按章节分组(保持出现顺序)
+    var order = [], groups = {};
     chain.forEach(function (e, idx) {
+      var c = chapterOfStory(e.s);
+      if (c == null) c = 0;  // 0 = 章节前的内容(如「介绍」)
+      if (!groups[c]) { groups[c] = []; order.push(c); }
+      groups[c].push({ e: e, idx: idx });
+    });
+    var curCh = chapterOfStory(curStory);
+    if (curCh == null && order.length) curCh = order[order.length - 1];
+    if (curCh !== histLastCur) {
+      // 进入新章节: 收起全部, 默认展开当前章
+      histExpanded = {};
+      if (curCh != null) histExpanded[curCh] = true;
+      histLastCur = curCh;
+    }
+
+    histListEl.innerHTML = "";
+    if (!order.length) {
+      var tip = document.createElement("li");
+      tip.style.cssText = "list-style:none;font-size:13px;color:var(--muted)";
+      tip.textContent = "本局暂无选择记录";
+      histListEl.appendChild(tip);
+      return;
+    }
+    order.forEach(function (c) {
+      var g = groups[c];
       var li = document.createElement("li");
-      if (e.k === "c" && e.a && KEY_ANCHORS[e.a]) li.className = "key";
-      var a = document.createElement("a");
-      var st = DATA.stories[e.s];
-      var sname = st ? st.name : ("故事" + e.s);
-      var s = document.createElement("span");
-      s.className = "h-story";
-      s.textContent = (e.k === "p" ? "🔍 " : "") + sname;
-      a.appendChild(s);
-      a.appendChild(document.createTextNode((e.k === "c" ? "◆ " : "") + e.t));
-      a.title = "点击退回到这一步之前";
-      a.addEventListener("click", function () {
-        chain = chain.slice(0, idx);
-        persistChain();
-        renderHistory();
-        replayAll(runStart);
-        toast("已退回");
+      li.className = "ch-group" + (histExpanded[c] ? "" : " collapsed");
+      var head = document.createElement("div");
+      head.className = "ch-head";
+      var nm = document.createElement("span");
+      nm.className = "ch-title";
+      nm.textContent = c === 0 ? "开头" : (DATA.stories[c] ? DATA.stories[c].name : "章节" + c);
+      var cnt = document.createElement("span");
+      cnt.className = "ch-n";
+      cnt.textContent = g.length;
+      var arrow = document.createElement("span");
+      arrow.className = "ch-arrow";
+      arrow.textContent = histExpanded[c] ? "▾" : "▸";
+      head.appendChild(nm); head.appendChild(cnt); head.appendChild(arrow);
+      head.title = "点击展开/收起本章";
+      head.addEventListener("click", function () {
+        histExpanded[c] = !histExpanded[c];
+        li.classList.toggle("collapsed", !histExpanded[c]);
+        arrow.textContent = histExpanded[c] ? "▾" : "▸";
       });
-      li.appendChild(a);
+      li.appendChild(head);
+      var ol = document.createElement("ol");
+      ol.className = "ch-items";
+      g.forEach(function (it) {
+        var e = it.e, idx = it.idx;
+        var item = document.createElement("li");
+        if (e.k === "c" && e.a && KEY_ANCHORS[e.a]) item.className = "key";
+        var a = document.createElement("a");
+        var st = DATA.stories[e.s];
+        var sname = st ? st.name : ("故事" + e.s);
+        var s = document.createElement("span");
+        s.className = "h-story";
+        s.textContent = (e.k === "p" ? "🔍 " : "") + sname;
+        a.appendChild(s);
+        a.appendChild(document.createTextNode((e.k === "c" ? "◆ " : "") + e.t));
+        a.title = "点击退回到这一步之前";
+        a.addEventListener("click", function () {
+          chain = chain.slice(0, idx);
+          persistChain();
+          renderHistory();
+          replayAll(runStart);
+          toast("已退回");
+        });
+        item.appendChild(a);
+        ol.appendChild(item);
+      });
+      li.appendChild(ol);
       histListEl.appendChild(li);
     });
   }
