@@ -34,6 +34,7 @@ function init(data) {
   var entry = data.entry;
 
   // URL query 定位: ?s=<节点id>, 与 /plot 页的参数名保持一致, 便于互相跳转
+  // /play 顶栏「分支图」会带 ?s=<当前故事> 跳入: 自动切到对应章节树、展开该小节并居中定位
   var urlNodeId = null;
   (function () {
     var v = new URLSearchParams(location.search).get("s");

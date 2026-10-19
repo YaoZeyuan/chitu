@@ -203,6 +203,7 @@
   }
 
   var lastBgNode = null;   // 最近一次背景图节点: 媒体从关到开时补放当前场景
+  var mediaSlots = {};     // slot -> 该立绘最新的 pic/picmove 节点(含 x/y/w/alpha): 媒体开关时完整重放
   // 橙光原始舞台 960x540; x/y 为相对默认位置的像素偏移, 换算成舞台百分比平移
   function ensureSlotImg(slot, want) {
     var hit = stageEl.querySelector('img[data-slot="' + slot + '"]');
@@ -222,7 +223,11 @@
     img.style.opacity = node.alpha == null ? 1 : node.alpha / 255;
   }
   function applyMedia(node) {
-    if (node.t === "pic" && node.bg) lastBgNode = node;  // 无论开关都记录, 开媒体时补放
+    // 媒体状态跟踪: 无论开关都记录, 供"关→开"时重放完整场景(背景+全部立绘)
+    if (node.t === "pic" && node.bg) { lastBgNode = node; mediaSlots = {}; }  // 换场景清空立绘状态
+    else if (node.t === "pic") mediaSlots[node.slot || ""] = node;
+    else if (node.t === "picmove") mediaSlots[node.slot || ""] = node;
+    else if (node.t === "hide") delete mediaSlots[node.slot];
     if (!mediaOn) return;
     if (node.t === "pic") {
       if (node.bg) {
@@ -271,6 +276,20 @@
     }
     frames = [{ items: st.items, i: 0 }];
     footStory(curStory);
+    // 分支图入口带上当前故事: 图内定位到对应节点(并展开该小节), 方便查看自己位置
+    var branchLink = document.getElementById("btn-branch");
+    if (branchLink) branchLink.href = "/plot/branch?s=" + curStory;
+  }
+
+  // 媒体"关→开"时重放完整场景: 背景 + 该场景全部立绘(含偏移/说话明暗)
+  // 注意不能走 applyMedia(lastBgNode): 那会再触发状态跟踪把 mediaSlots 清空
+  function repaintMedia() {
+    if (!mediaOn) return;
+    if (lastBgNode) {
+      stageEl.querySelectorAll("img.spic").forEach(function (i) { i.remove(); });
+      stageEl.style.backgroundImage = 'url("' + lastBgNode.img + '")';
+    }
+    for (var k in mediaSlots) paintPortrait(ensureSlotImg(k, mediaSlots[k].img), mediaSlots[k]);
   }
 
   function stopBgm() { if (bgmAudio) { bgmAudio.pause(); bgmAudio = null; } }
@@ -578,7 +597,7 @@
     mkBtn(btns, "↩ 退回上一选择", function () { back(1); });
     mkBtn(btns, "★ 退回最近关键抉择", function () { backToKey(); });
     mkBtn(btns, "⟲ 从头开始", function () { restart(); });
-    mkBtn(btns, "查看分支图", function () { location.href = "/plot/branch"; });
+    mkBtn(btns, "查看分支图", function () { location.href = "/plot/branch/?s=" + curStory; });
     card.appendChild(btns);
     flowEl.appendChild(card);
     scrollWin();
@@ -838,7 +857,7 @@
       lsSet(LS_MEDIA, mediaOn);
       paintMedia();
       if (!mediaOn) stopBgm();
-      else if (lastBgNode) applyMedia(lastBgNode);  // 后开媒体: 补放当前场景背景
+      else repaintMedia();  // 后开媒体: 重放当前场景(背景+全部立绘)
     });
   }
 
