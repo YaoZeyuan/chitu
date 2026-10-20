@@ -6,7 +6,14 @@
   </header>
 
   <nav>
-    <a v-for="item in links" :key="item.name" :class="{ primary: item.primary }" :href="item.href" :target="item.external ? '_blank' : undefined" :rel="item.external ? 'noopener' : undefined">
+    <a
+      v-for="item in links"
+      :key="item.name"
+      :class="{ primary: item.primary }"
+      :href="item.href"
+      :target="item.external ? '_blank' : undefined"
+      :rel="item.external ? 'noopener' : undefined"
+    >
       <span class="name">{{ item.name }}</span>
       <span class="desc">{{ item.desc }}</span>
       <span class="arrow">{{ item.external ? "↗" : "→" }}</span>
@@ -18,13 +25,33 @@
 
 <script setup>
 const links = [
-  { name: "开始游戏", desc: "原版游戏 · 可存档", href: "/game.html", primary: true },
-  { name: "文字模式", desc: "对话式读剧情 · 可回退/记录足迹", href: "/play" },
+  {
+    name: "开始游戏",
+    desc: "原版游戏 · 可存档",
+    href: "/game.html",
+    primary: true,
+  },
+  { name: "文字模式", desc: "对话式读剧情 · 可回退", href: "/play" },
   { name: "剧情脚本", desc: "原始剧本 · 速览章节", href: "/plot" },
-  { name: "节点概览", desc: "全剧情分支图", href: "/plot/branch" },
-  { name: "游戏介绍", desc: "来自公众号的安利", href: "https://mp.weixin.qq.com/s/QCk0tUsYSIgUTnppGfoQRw", external: true },
-  { name: "隐形守护者", desc: "原团队开发的手机版", href: "https://yxshz.qq.com/", external: true },
-  { name: "项目地址", desc: "GitHub · YaoZeyuan/chitu", href: "https://github.com/YaoZeyuan/chitu", external: true },
+  { name: "节点概览", desc: "全流程节点", href: "/plot/branch" },
+  {
+    name: "游戏介绍",
+    desc: "来自公众号的安利",
+    href: "https://mp.weixin.qq.com/s/QCk0tUsYSIgUTnppGfoQRw",
+    external: true,
+  },
+  {
+    name: "隐形守护者",
+    desc: "原团队开发的手机版",
+    href: "https://yxshz.qq.com/",
+    external: true,
+  },
+  {
+    name: "项目地址",
+    desc: "GitHub · YaoZeyuan/chitu",
+    href: "https://github.com/YaoZeyuan/chitu",
+    external: true,
+  },
 ];
 </script>
 
