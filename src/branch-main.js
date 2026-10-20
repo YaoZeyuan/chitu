@@ -34,11 +34,14 @@ function init(data) {
   var entry = data.entry;
 
   // URL query 定位: ?s=<节点id>, 与 /plot 页的参数名保持一致, 便于互相跳转
-  // /play 顶栏「分支图」会带 ?s=<当前故事> 跳入: 自动切到对应章节树、展开该小节并居中定位
+  // /play 顶栏「分支图」会带 ?s=<当前故事>&expand=all 跳入: 自动切到对应章节树、全部展开并居中定位
   var urlNodeId = null;
+  var urlExpandAll = false;
   (function () {
-    var v = new URLSearchParams(location.search).get("s");
+    var q = new URLSearchParams(location.search);
+    var v = q.get("s");
     if (v && /^\d+$/.test(v)) urlNodeId = Number(v);
+    if (q.get("expand") === "all") urlExpandAll = true;
   })();
 
   var nodeById = {};
@@ -314,6 +317,7 @@ function init(data) {
   var showAll = false;   // 全部展开/收起(按钮)
   var expanded = {};     // 用户点击展开的小节 story id -> true
   var keyOnly = false;   // 只看关键抉择(分叉/汇合/条件/剧终, 线性推进压缩)
+  if (urlExpandAll) showAll = true;  // ?expand=all: 等效"全部展开"按钮(rebuild 时按钮状态自动同步)
   var footOn = true;     // 我的足迹: 高亮纯文本模式(/play)走过的路径; 默认开启, 记住手动关闭
   try { footOn = localStorage.getItem("qf_foot_on") !== "0"; } catch (e) { }
   var footStories = {};  // 已访问故事 sid -> 1 (来自 localStorage)

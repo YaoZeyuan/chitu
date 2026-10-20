@@ -278,7 +278,7 @@
     footStory(curStory);
     // 分支图入口带上当前故事: 图内定位到对应节点(并展开该小节), 方便查看自己位置
     var branchLink = document.getElementById("btn-branch");
-    if (branchLink) branchLink.href = "/plot/branch?s=" + curStory;
+    if (branchLink) branchLink.href = "/plot/branch?s=" + curStory + "&expand=all";
   }
 
   // 媒体"关→开"时重放完整场景: 背景 + 该场景全部立绘(含偏移/说话明暗)
@@ -617,7 +617,7 @@
     var btns = document.createElement("div");
     btns.className = "end-btns";
     mkBtn(btns, "↩ 退回上一选择", function () { back(1); });
-    mkBtn(btns, "查看分支图", function () { location.href = "/plot/branch?s=" + curStory; });
+    mkBtn(btns, "查看分支图", function () { location.href = "/plot/branch?s=" + curStory + "&expand=all"; });
     card.appendChild(btns);
     flowEl.appendChild(card);
     scrollWin();
