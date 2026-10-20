@@ -46,8 +46,11 @@ def main():
     range_conds = collections.defaultdict(set)   # >=/<=/>/</>=/<= 阈值
     eq_conds = collections.defaultdict(set)      # ＝/≠ 阈值
     story_vars = collections.defaultdict(set)    # story sid -> 条件引用的变量
+    assign_stories = collections.defaultdict(set)   # vid -> 出现赋值的故事 sid
+    use_sites = collections.defaultdict(list)       # vid -> [(故事 sid, 条件原文)]
+    CHAPTER_RE = re.compile(r"^(序章|第[一二三四五六七八九十百零两]+章|终章)$")
 
-    def collect(items, sv=None):
+    def collect(items, sv=None, sid=None):
         def fn(it):
             t = it.get("t")
             if t == "assign":
@@ -59,6 +62,8 @@ def main():
                 nm = RE_NAME_IN_ASSIGN.match(it["expr"])
                 if nm:
                     names[vid].add(nm.group(2).strip())
+                if sid is not None:
+                    assign_stories[vid].add(sid)
                 if op == "=":
                     if not RE_RHS_VAR.match(rhs):
                         try:
@@ -95,15 +100,28 @@ def main():
                         range_conds[vid].add(val)
                     if sv is not None:
                         sv.add(vid)
+                    if sid is not None:
+                        use_sites[vid].append((sid, c))
 
         walk_items(items, fn)
 
     story_vars_out = {}
+    assign_out = {}
+    uses_out = {}
+    chapter_marks = {}   # 章标记故事 sid -> 名称
     for sid, st in d["stories"].items():
         sv = set()
-        collect(st.get("items", []), sv)
+        collect(st.get("items", []), sv, sid)
         if sv:
             story_vars_out[str(sid)] = sorted(sv)
+        if CHAPTER_RE.match(st.get("name", "") or ""):
+            chapter_marks[int(sid)] = st["name"]
+
+    for vid in set(assign_stories) | set(use_sites):
+        if assign_stories.get(vid):
+            assign_out[str(vid)] = sorted(assign_stories[vid])
+        if use_sites.get(vid):
+            uses_out[str(vid)] = sorted(set(use_sites[vid]))
 
     # ---- 变量元数据与预设值 ----
     vars_out = {}
@@ -136,7 +154,15 @@ def main():
             kind = "bool" if set(vals) <= {0, 1} else "enum"
             vars_out[str(vid)] = {"n": nm, "kind": kind, "p": vals[:8]}
 
-    out = {"vars": vars_out, "storyVars": story_vars_out}
+    out = {
+        "vars": vars_out,
+        "storyVars": story_vars_out,
+        # 变量位置信息: a=出现赋值的故事 sid 列表, u=[[故事 sid, 条件原文], ...],
+        # marks=章节标记故事(sid->名称), 供前端按「节点前已触发 + 本章节后续使用」过滤
+        "assign": assign_out,
+        "uses": uses_out,
+        "marks": {str(k): v for k, v in sorted(chapter_marks.items())},
+    }
     io.open(DST, "w", encoding="utf-8").write(
         json.dumps(out, ensure_ascii=False, separators=(",", ":"))
     )

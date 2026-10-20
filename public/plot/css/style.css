@@ -353,3 +353,13 @@ body.branch { overflow: hidden; }
   background: none; border: none; cursor: pointer; padding: 2px 4px;
 }
 .var-more:hover { text-decoration: underline; }
+.var-fn {
+  display: inline-block;
+  margin-left: 2px;
+  font-size: 10px;
+  color: var(--accent);
+  cursor: help;
+  border-bottom: 1px dotted currentColor;
+  line-height: 1;
+  vertical-align: super;
+}

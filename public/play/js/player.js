@@ -597,7 +597,7 @@
     mkBtn(btns, "↩ 退回上一选择", function () { back(1); });
     mkBtn(btns, "★ 退回最近关键抉择", function () { backToKey(); });
     mkBtn(btns, "⟲ 从头开始", function () { restart(); });
-    mkBtn(btns, "查看分支图", function () { location.href = "/branch?s=" + curStory + "&expand=all"; });
+    mkBtn(btns, "查看分支图", function () { window.open("/branch?s=" + curStory + "&expand=all", "_blank"); });
     card.appendChild(btns);
     flowEl.appendChild(card);
     scrollWin();
@@ -617,7 +617,7 @@
     var btns = document.createElement("div");
     btns.className = "end-btns";
     mkBtn(btns, "↩ 退回上一选择", function () { back(1); });
-    mkBtn(btns, "查看分支图", function () { location.href = "/branch?s=" + curStory + "&expand=all"; });
+    mkBtn(btns, "查看分支图", function () { window.open("/branch?s=" + curStory + "&expand=all", "_blank"); });
     card.appendChild(btns);
     flowEl.appendChild(card);
     scrollWin();

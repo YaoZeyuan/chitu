@@ -5,7 +5,7 @@ inject();
 
 /* ---------------- 数据 ---------------- */
 async function load() {
-  var VV = "?v=20261019b";   // 数据版本: 更新数据后同步改这里, 避免浏览器缓存旧 json
+  var VV = "?v=20261020a";   // 数据版本: 更新数据后同步改这里, 避免浏览器缓存旧 json
   var res = await fetch("/plot/js/branches.json" + VV, { cache: "no-cache" });
   if (!res.ok) throw new Error("branches.json 加载失败: " + res.status);
   var data = await res.json();
@@ -340,28 +340,56 @@ function init(data) {
   /* ---------- 节点变量状态(跳转 /play 前可设定初始值) ---------- */
   var VARS_META = (data.varsData && data.varsData.vars) || {};    // vid -> {n,kind,p}
   var STORY_VARS = (data.varsData && data.varsData.storyVars) || {}; // sid -> [vid..]
+  var VAR_ASSIGNS = (data.varsData && data.varsData.assign) || {};   // vid -> 出现赋值的故事 sid 列表
+  var VAR_USES = (data.varsData && data.varsData.uses) || {};        // vid -> [[故事 sid, 条件原文], ...]
+  var CH_MARKS = (data.varsData && data.varsData.marks) || {};       // 章标记故事 sid -> 名称
   var VAR_SHOW_MAX = 10; // 详情面板默认最多展示的变量数, 其余可展开
 
-  function nodeSidOf(n) { return n.story != null ? n.story : (n.page != null ? n.page : n.id); }
+  var nodeSidOf = function (n) { return n.story != null ? n.story : (n.page != null ? n.page : n.id); };
 
-  // 沿分支图向下 BFS, 汇总下游各故事条件里引用的变量(含本节点所属故事)
-  var dvarsCache = {};
-  function downstreamVarIds(id) {
-    if (dvarsCache[id]) return dvarsCache[id];
-    var seen = {}, stack = [id], out = {};
-    while (stack.length) {
-      var cur = stack.pop();
-      if (seen[cur]) continue;
-      seen[cur] = 1;
-      var nn = nodeById[cur];
-      if (nn) {
-        (STORY_VARS[String(nodeSidOf(nn))] || []).forEach(function (v) { out[v] = true; });
-      }
-      (outMap[cur] || []).forEach(function (e) { if (!seen[e.t]) stack.push(e.t); });
+  // 章节归属: 故事属于其之前(含自身)最近的章标记故事(sid 顺序即剧情顺序, 第五/六章编号错位与 play 端一致)
+  var markSids = Object.keys(CH_MARKS).map(Number).sort(function (a, b) { return a - b; });
+  var chCache = {};
+  function chapterOfSid(sid) {
+    if (chCache[sid] != null) return chCache[sid];
+    var ch = markSids[0] != null ? markSids[0] : 0;   // 无前置章标记(介绍段)归第一个章节
+    for (var i = 0; i < markSids.length; i++) {
+      if (markSids[i] <= sid) ch = markSids[i]; else break;
     }
-    var arr = Object.keys(out).map(Number).sort(function (a, b) { return a - b; });
-    dvarsCache[id] = arr;
-    return arr;
+    chCache[sid] = ch;
+    return ch;
+  }
+
+  // 变量面板过滤(按剧情逻辑, 不再沿图 BFS 汇总全部下游):
+  //   ① 只展示在本节点(含本身)之前已触发过赋值的变量
+  //   ② 该变量须在本节点之后、且限定在节点所在章节内仍被条件使用(跨章才用的不展示)
+  function nodeVarRows(id) {
+    var sid = Number(nodeSidOf(nodeById[id]) || id);
+    var ch = chapterOfSid(sid);
+    var rows = [];
+    Object.keys(VARS_META).forEach(function (vidStr) {
+      var assigns = (VAR_ASSIGNS[vidStr] || []).map(Number);
+      if (!assigns.some(function (a) { return a <= sid; })) return;      // 节点前未触发
+      var uses = (VAR_USES[vidStr] || []).filter(function (u) {
+        return Number(u[0]) >= sid && chapterOfSid(Number(u[0])) === ch;  // 本章节后续使用
+      });
+      if (!uses.length) return;
+      rows.push({ v: Number(vidStr), uses: uses });
+    });
+    return rows;
+  }
+
+  // 脚注: 本章节后续的分支条件(去重阈值), 悬停可见
+  function varFootnote(uses) {
+    var seen = {}, parts = [];
+    uses.forEach(function (u) {
+      var m = /]\s*(≥|≤|＞|＜|＝|≠|>=|<=|==|!=|>|<|=)\s*(.+)$/.exec(u[1]);
+      var txt = m ? m[1] + " " + m[2].trim() : u[1];
+      if (!seen[txt]) { seen[txt] = 1; parts.push(txt); }
+    });
+    if (!parts.length) return "";
+    var chName = CH_MARKS[String(chapterOfSid(Number(uses[0][0])))] || "";
+    return "本章节后续分支条件(" + chName + "): " + parts.join("、");
   }
 
   // 已保存节点参数: FIFO 队列, 上限 10 个节点, 最近使用在前; 默认值(0)不落盘
@@ -597,12 +625,12 @@ function init(data) {
     if ((raw.synthetic || raw.beat) && raw.anchor) viewUrl = "/plot?s=" + (raw.page || raw.story) + "#" + raw.anchor;
     else if (raw.synthetic || raw.cond || raw.beat) viewUrl = "/plot?s=" + (raw.page || raw.story);
     else viewUrl = "/plot?s=" + id;
-    // 变量状态: 下游条件引用的变量, 可在跳转前设定开局初始值(默认 0)
+    // 变量状态: 按剧情逻辑过滤(本节点前已触发 + 本章节后续使用), 可在跳转前设定开局初始值(默认 0)
     var panelSel = {};          // vid -> 当前选择值(默认 0)
-    var dvars = downstreamVarIds(id).filter(function (v) { return VARS_META[String(v)]; });
+    var dvars = nodeVarRows(id);
     var savedEntry = savedNodeVars(id) || {};
-    dvars.forEach(function (v) {
-      panelSel[v] = savedEntry[v] != null ? Number(savedEntry[v]) : 0;
+    dvars.forEach(function (r) {
+      panelSel[r.v] = savedEntry[r.v] != null ? Number(savedEntry[r.v]) : 0;
     });
     var playUrl = buildPlayUrl(id, panelSel);
     h += '<p class="btn-row"><a class="btn primary" id="play-link" href="' + playUrl + '" target="_blank">▶ 从这里开始玩</a>'
@@ -610,16 +638,20 @@ function init(data) {
     h += '<p class="meta">「开始玩」进入纯文本模式(可回退、记录足迹); 速览直达 /plot 对应剧情节点</p>';
     if (dvars.length) {
       h += '<div class="var-sec" id="panel-vars">';
-      h += '<div class="var-head">变量状态 <span>点击设定开局初始值 · 默认 0 · 保存最近 10 个节点</span>';
-      h += '<em class="tag var-kept-tag' + (dvars.some(function (v) { return panelSel[v] !== 0; }) ? "" : " hidden") + '">已存参数</em>';
+      h += '<div class="var-head">变量状态 <span>仅列本节点前已触发且本章节后续会用的变量 · 点击设定开局初始值</span>';
+      h += '<em class="tag var-kept-tag' + (dvars.some(function (r) { return panelSel[r.v] !== 0; }) ? "" : " hidden") + '">已存参数</em>';
       h += "</div>";
       h += '<div class="var-list">';
-      dvars.forEach(function (v, vi) {
+      dvars.forEach(function (r, vi) {
+        var v = r.v;
         var meta = VARS_META[String(v)];
         var extra = vi >= VAR_SHOW_MAX ? " var-extra hidden" : "";
         var rowSaved = panelSel[v] !== 0 ? " var-saved" : "";
+        var fn = varFootnote(r.uses);
         h += '<div class="var-row' + rowSaved + extra + '" data-var="' + v + '">';
-        h += '<span class="var-name" title="变量#' + v + '">' + esc(meta.n) + "</span>";
+        h += '<span class="var-name" title="变量#' + v + '">' + esc(meta.n);
+        if (fn) h += '<sup class="var-fn" title="' + esc(fn) + '">?</sup>';
+        h += "</span>";
         h += '<span class="var-btns">';
         meta.p.forEach(function (pv) {
           var lab = meta.kind === "bool" ? (pv === 0 ? "否" : "是") : String(pv);
