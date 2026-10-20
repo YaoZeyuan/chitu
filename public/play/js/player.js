@@ -462,7 +462,7 @@
     node.opts.forEach(function (o, idx) {
       var b = document.createElement("button");
       b.innerHTML = esc(o.txt);
-      if (KEY_ANCHORS[o.a]) b.innerHTML = "★ " + esc(o.txt);
+      if (KEY_ANCHORS[o.a]) b.innerHTML = esc(o.txt);  // 关键抉择不再加 ★ 前缀(无意义装饰)
       b.addEventListener("click", function (ev) {
         ev.stopPropagation();
         pickChoice(idx);
@@ -595,7 +595,7 @@
     var btns = document.createElement("div");
     btns.className = "end-btns";
     mkBtn(btns, "↩ 退回上一选择", function () { back(1); });
-    mkBtn(btns, "★ 退回最近关键抉择", function () { backToKey(); });
+    mkBtn(btns, "退回最近关键抉择", function () { backToKey(); });
     mkBtn(btns, "⟲ 从头开始", function () { restart(); });
     mkBtn(btns, "查看分支图", function () { window.open("/branch?s=" + curStory + "&expand=all", "_blank"); });
     card.appendChild(btns);

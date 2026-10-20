@@ -221,7 +221,7 @@ function init(data) {
       };
     }
     // 其余全部为卡片: 标题 + 摘要 + 统计
-    var title = (curatedKey[id] ? "★ " : "") + n.name + (storyHasKids[id] ? (isExpanded(id) ? " ▾" : " ▸") : "");
+    var title = n.name + (storyHasKids[id] ? (isExpanded(id) ? " ▾" : " ▸") : "");
     var summary = n.summary || "";
     if (summary.length > 44) summary = summary.slice(0, 43) + "…";
     var meta = [];
