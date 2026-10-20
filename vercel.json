@@ -11,6 +11,10 @@
     {
       "source": "/play",
       "destination": "/play/index.html"
+    },
+    {
+      "source": "/branch",
+      "destination": "/branch/index.html"
     }
   ]
 }

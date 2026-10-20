@@ -33,7 +33,7 @@ const links = [
   },
   { name: "文字模式", desc: "对话式读剧情 · 可回退", href: "/play" },
   { name: "剧情脚本", desc: "原始剧本 · 速览章节", href: "/plot" },
-  { name: "节点概览", desc: "全流程节点", href: "/plot/branch" },
+  { name: "节点概览", desc: "全流程节点", href: "/branch" },
   {
     name: "游戏介绍",
     desc: "来自公众号的安利",
