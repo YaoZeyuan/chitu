@@ -5,7 +5,7 @@ inject();
 
 /* ---------------- 数据 ---------------- */
 async function load() {
-  var VV = "?v=20261020a";   // 数据版本: 更新数据后同步改这里, 避免浏览器缓存旧 json
+  var VV = "?v=20261020b";   // 数据版本: 更新数据后同步改这里, 避免浏览器缓存旧 json
   var res = await fetch("/plot/js/branches.json" + VV, { cache: "no-cache" });
   if (!res.ok) throw new Error("branches.json 加载失败: " + res.status);
   var data = await res.json();
@@ -379,17 +379,18 @@ function init(data) {
     return rows;
   }
 
-  // 脚注: 本章节后续的分支条件(去重阈值), 悬停可见
+  // 脚注: 变量说明 = 本章节后续各条件分支的走向(满足→什么剧情 / 否则→什么剧情), 悬停可见
   function varFootnote(uses) {
-    var seen = {}, parts = [];
+    var lines = [], seen = {};
     uses.forEach(function (u) {
+      var hint = (u[2] || "").replace(/^数值：?\[[^\]]*\]\s*/, "");   // hint 已含条件, 去掉重复前缀
       var m = /]\s*(≥|≤|＞|＜|＝|≠|>=|<=|==|!=|>|<|=)\s*(.+)$/.exec(u[1]);
-      var txt = m ? m[1] + " " + m[2].trim() : u[1];
-      if (!seen[txt]) { seen[txt] = 1; parts.push(txt); }
+      var line = hint || (m ? m[1] + " " + m[2].trim() : u[1]);
+      if (!seen[line]) { seen[line] = 1; lines.push(line); }
     });
-    if (!parts.length) return "";
+    if (!lines.length) return "";
     var chName = CH_MARKS[String(chapterOfSid(Number(uses[0][0])))] || "";
-    return "本章节后续分支条件(" + chName + "): " + parts.join("、");
+    return "变量作用 · 本章节(" + chName + ")后续分支:\n" + lines.slice(0, 8).join("\n");
   }
 
   // 已保存节点参数: FIFO 队列, 上限 10 个节点, 最近使用在前; 默认值(0)不落盘

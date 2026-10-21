@@ -17,6 +17,22 @@ RE_NAME_IN_ASSIGN = re.compile(r"^\[(\d+):([^\]]+)\]")
 RE_NAME_IN_COND = re.compile(r"数值：?\[(\d+):([^\]]+)\]")
 RE_RHS_VAR = re.compile(r"^数值：?\[(\d+)")
 
+# 人工梳理的变量名(原名缺失或无意义): 依据赋值/使用处的上下文文本归纳
+NAME_OVERRIDES = {
+    7: "序章·第一夜是否结束",
+    41: "记事本调查·黄正义已选",
+    42: "记事本调查·唐克敏已选",
+    43: "记事本调查·杨江已选",
+    44: "记事本调查·曾俞已选",
+    45: "记事本调查·徐琳已选",
+    46: "记事本调查·齐宗志已选",
+    47: "记事本调查·卢文化已选",
+}
+
+
+def strip_html(s):
+    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", s or "")).strip()
+
 
 def walk_items(items, fn):
     for it in items:
@@ -101,7 +117,19 @@ def main():
                     if sv is not None:
                         sv.add(vid)
                     if sid is not None:
-                        use_sites[vid].append((sid, c))
+                        # 提取条件各分支的走向(首个文本节点), 供脚注说明"选了会怎样"
+                        parts = []
+                        for b in it.get("branches", []) or []:
+                            snip = ""
+                            for n2 in b.get("body") or []:
+                                if n2.get("t") == "text":
+                                    snip = strip_html(n2.get("h"))[:36]
+                                    break
+                            ct = strip_html(b.get("cond", "")) or "否则"
+                            if snip:
+                                parts.append(ct + " → " + snip)
+                        hint = "；".join(parts)[:160]
+                        use_sites[vid].append((sid, c, hint))
 
         walk_items(items, fn)
 
@@ -121,12 +149,16 @@ def main():
         if assign_stories.get(vid):
             assign_out[str(vid)] = sorted(assign_stories[vid])
         if use_sites.get(vid):
-            uses_out[str(vid)] = sorted(set(use_sites[vid]))
+            # 同故事同条件去重(保留首个 hint); hint 相同的也合并
+            uses_out[str(vid)] = [list(t) for t in sorted(set(use_sites[vid]))]
 
     # ---- 变量元数据与预设值 ----
     vars_out = {}
     for vid in sorted(set(names) | set(eq_conds) | set(range_conds) | set(eq_consts)):
-        nm = "/".join(sorted(names.get(vid, []))[:2]) or ("变量#" + str(vid))
+        if vid in NAME_OVERRIDES:
+            nm = NAME_OVERRIDES[vid]
+        else:
+            nm = "/".join(sorted(names.get(vid, []))[:2]) or ("变量#" + str(vid))
         if re.match(r"^[\d\s/]+$", nm):
             nm = "变量#" + str(vid)
         is_count = has_inc.get(vid) or bool(range_conds.get(vid))
