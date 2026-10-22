@@ -4,6 +4,7 @@
 
 <head>
     <meta charset='utf-8'/>
+    <base href="/">
     <title>潜伏之赤途</title>
     <meta name='viewport'
           content='width=device-width,initial-scale=1.0,minimum-scale=1.0,maximum-scale=1.0,user-scalable=no'
@@ -192,7 +193,7 @@
 //        GloableData.getInstance().serverPath = ServerPath;
         gamebinpath = ""
         // GloableData.getInstance().serverPath = "//c2.cgyouxi.com/website/hfplayer/v2/bin/";
-        GloableData.getInstance().serverPath = "./";
+        GloableData.getInstance().serverPath = "/";   // SPA 下页面在 /game/index.html, 相对路径会错, 改绝对根
         try{
             window["gameMain"].initGameData(gid, version, m, s, q, gamebinpath, game_screen, gindex, plat);
             GloableData.getInstance().gameInfo.gIndex = '699726'
@@ -294,6 +295,6 @@
     }
 </script>
 <!-- Vercel Analytics -->
-<script type="module" src="/src/game-main.js"></script>
+
 </body>
 </html>

@@ -55,7 +55,7 @@ pnpm preview      # 本地预览构建产物
 
 **思考**：需要单页应用的客户端路由才能让 analytics 正确统计 PV，但游戏本体是重 JS 逻辑的既有代码，不宜重写。
 
-**解决**：改造为 **Vite + pnpm + Vue 3 多页应用（MPA）**——每页独立入口配 vue-router，游戏逻辑原样保留只做入口包装；Vercel 部署（`cleanUrls` + `/plot` 重写规则），全站接入 `@vercel/analytics`。期间解决过 Vercel rewrite 与 Vite dev server 行为不一致、Windows Hyper-V 端口占用等工程问题。
+**解决**：改造为 **Vite + pnpm + Vue 3 多页应用（MPA）**——每页独立入口配 vue-router，游戏逻辑原样保留只做入口包装；Vercel 部署（`cleanUrls` + 路由重写规则），全站接入 `@vercel/analytics`。期间解决过 Vercel rewrite 与 Vite dev server 行为不一致、Windows Hyper-V 端口占用等工程问题。
 
 **收益**：既保住了"游戏逻辑零改动"，又获得了现代前端的构建、路由与统计能力。
 
@@ -116,7 +116,8 @@ pnpm preview      # 本地预览构建产物
 │   ├── graphics/ audio/ font/  # 本地化的游戏资源（381 个，无外部依赖）
 │   ├── play/js/                # script.json(播放数据) / player.js(播放器)
 │   └── plot/js/                # data.js(速览+图共用) / branches.json / branch_vars.json(变量元数据) / viewer.js
-├── src/                        # Vue 入口与路由、branch-main.js(G6 分支图)
+├── src/                        # Vue 入口/路由/视图(各页面逻辑按需加载) + branch-main.js(G6 分支图)
+├── public/engine.html          # 橙光播放器原版页面(/game 路由以 iframe 内嵌, 引擎零改动)
 ├── glm-5.3-flash/game.json     # rebuild_game_json.py 的输出(语义化事件)
 ├── task_plan/                  # 数据流水线脚本与任务记录
 │   ├── build_data.py / build_branches_json.py   # 速览与分支图数据

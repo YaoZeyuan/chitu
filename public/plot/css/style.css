@@ -1,4 +1,8 @@
 /* 潜伏之赤途 · 剧情速览 & 分支图 共用样式 */
+/* SPA 壳: 内容页取消首页的 body 居中布局, 恢复全屏文档流 */
+body.page-full { display: block; padding: 0; min-height: 0; align-items: stretch; justify-content: flex-start; }
+body.page-full #app { width: 100%; }
+
 :root {
   --bg: #f5f2ec;
   --panel: #fffdf8;

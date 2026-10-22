@@ -74,7 +74,8 @@
   /* 三段布局占满视口, 锁死页面级滚动(所有滚动发生在 flow 内部)
      body 弹性列布局: 顶栏高度随按钮换行自适应(窄屏远超桌面的 57px, 不能写死) */
   html, body { overflow: hidden; height: 100%; }
-  body { display: flex; flex-direction: column; }
+  body.page-full { display: flex; flex-direction: column; padding: 0; height: 100%; }
+  body.page-full #app { display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; width: 100%; }
   .topbar { flex: 0 0 auto; }
   #wrap {
     display: flex;

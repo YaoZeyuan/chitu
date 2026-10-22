@@ -1,6 +1,7 @@
 /* 潜伏之赤途 · 剧情速览  viewer.js */
-(function () {
+export function run() {
   "use strict";
+  if (!window.PLOT_DATA) throw new Error("PLOT_DATA 未加载");
   var D = window.PLOT_DATA;
   // ORDER 只含正式章节(排除工具剧情与拆分支线节点), 用于 TOC 与上一章/下一章
   var ORDER = Object.keys(D.stories)
@@ -47,12 +48,12 @@
     render(s, p, anchor);
   }
 
-  window.addEventListener("popstate", function (ev) {
+  var onPop = function (ev) {
     var st = ev.state;
     if (st && st.s) { render(st.s, st.p, null); return; }
     var u = parseURL();
     render(u.s, u.p, u.hash);
-  });
+  };
 
   /* ---------------- 渲染 ---------------- */
   function el(tag, cls, html) {
@@ -434,7 +435,7 @@
 
   // 滚动越过下一个 BGM 标记时暂停（不自动播放新曲）
   var scrollTimer = null;
-  window.addEventListener("scroll", function () {
+  var onScroll = function () {
     if (scrollTimer) return;
     scrollTimer = setTimeout(function () {
       scrollTimer = null;
@@ -447,10 +448,20 @@
       }
       if (lastAbove && lastAbove !== activeMarkerId) stopBgm();
     }, 250);
-  }, { passive: true });
+  };
+  window.addEventListener("popstate", onPop);
+  window.addEventListener("scroll", onScroll, { passive: true });
 
   /* ---------------- 启动 ---------------- */
   var u = parseURL();
   history.replaceState({ s: u.s, p: u.p, depth: 0 }, "", location.href);
   render(u.s, u.p, u.hash);
-})();
+}
+
+export function destroy() {
+  try {
+    window.removeEventListener("popstate", onPop);
+    window.removeEventListener("scroll", onScroll);
+    if (audio) { audio.pause(); audio.src = ""; }
+  } catch (e) { /* ignore */ }
+}

@@ -1,31 +1,11 @@
 import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
 
-// 模拟 vercel.json 中的 rewrite: /plot -> /plot/index.html, /play -> /play/index.html, /branch -> /branch/index.html
-// （Vite dev/preview 不读 vercel.json，需要自己补）
-function plotIndexRewrite() {
-  function handler(req, res, next) {
-    for (const p of ["/plot", "/play", "/branch"]) {
-      if (req.url === p || req.url?.startsWith(p + "?")) {
-        req.url = req.url.replace(p, p + "/index.html");
-        break;
-      }
-    }
-    next();
-  }
-  return {
-    name: "plot-index-rewrite",
-    configureServer(server) {
-      server.middlewares.use(handler);
-    },
-    configurePreviewServer(server) {
-      server.middlewares.use(handler);
-    },
-  };
-}
+// 已收束为单入口 SPA: /game /plot /branch /play 都是 vue-router 前端路由,
+// dev/preview 的 history 回退由 Vite 内置 SPA fallback 处理, 不再需要自定义 rewrite 中间件。
 
 export default defineConfig({
-  plugins: [vue(), plotIndexRewrite()],
+  plugins: [vue()],
   // 游戏本体等静态资源原样放 public/，构建时整体拷贝到 dist/
   publicDir: "public",
   build: {
@@ -39,20 +19,19 @@ export default defineConfig({
       transformMixedEsModules: true,
     },
     rollupOptions: {
-      // 多页入口：首页(Vue SPA) + 游戏页 + 剧情两页(原静态逻辑，仅注入 analytics)
+      // 单入口: 各页面逻辑经动态 import 拆为按需加载的 chunk
       input: {
         main: "index.html",
-        game: "game.html",
-        "plot/index": "plot/index.html",
-        "plot/branch": "plot/branch.html",   // 旧地址跳转壳 → /branch(保留以兼容收藏/外链)
-        "branch/index": "branch/index.html",
-        "play/index": "play/index.html",
       },
     },
   },
   server: {
     // 5173 落在本机 Hyper-V 保留端口段(5129-5228)内，改用 3070
     port: 3070,
+    host: "127.0.0.1",
+  },
+  preview: {
+    port: 8321,
     host: "127.0.0.1",
   },
 });

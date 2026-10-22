@@ -22,12 +22,23 @@ async function load() {
   return data;
 }
 
-load().then(init).catch(function (err) {
-  console.error(err);
-  document.getElementById("graph-scroll").innerHTML =
-    '<p style="padding:24px;color:#a4322a;white-space:pre-wrap">分支图加载失败：' +
-    err.message + "\n" + String(err.stack || "").split("\n").slice(0, 5).join("\n") + "</p>";
-});
+/* ---------------- 挂载入口(SPA): run() 初始化, destroy() 清理 ---------------- */
+var activeGraph = null;      // 最近一次创建的 G6 实例, 供 destroy 释放
+var docHandlers = [];        // init 期间注册的 document 级监听, destroy 时移除
+export function run() {
+  return load().then(init).catch(function (err) {
+    console.error(err);
+    var gs = document.getElementById("graph-scroll");
+    if (gs) gs.innerHTML =
+      '<p style="padding:24px;color:#a4322a;white-space:pre-wrap">分支图加载失败：' +
+      err.message + "\n" + String(err.stack || "").split("\n").slice(0, 5).join("\n") + "</p>";
+  });
+}
+export function destroy() {
+  if (activeGraph) { try { activeGraph.destroy(); } catch (e) { /* ignore */ } activeGraph = null; }
+  docHandlers.forEach(function (h) { document.removeEventListener(h.type, h.fn, h.opts); });
+  docHandlers = [];
+}
 
 /* ---------------- 初始化 ---------------- */
 function init(data) {
@@ -651,7 +662,7 @@ function init(data) {
         var fn = varFootnote(r.uses);
         h += '<div class="var-row' + rowSaved + extra + '" data-var="' + v + '">';
         h += '<span class="var-name" title="变量#' + v + '">' + esc(meta.n);
-        if (fn) h += '<sup class="var-fn" title="' + esc(fn) + '">?</sup>';
+        if (fn) h += '<sup class="var-fn" data-tip="' + esc(fn).replace(/\n/g, "<br>") + '">?</sup>';
         h += "</span>";
         h += '<span class="var-btns">';
         meta.p.forEach(function (pv) {
@@ -787,8 +798,7 @@ function init(data) {
     var vd = buildView(currentView);
 
     graph = new G6.Graph({
-      container: "graph-scroll",
-      renderer: "canvas",
+      container: "graph-scroll",      renderer: "canvas",
       // 注意：不要开 fitView: true —— 它会在布局完成后异步再缩放一次，覆盖手动视图
       animate: false,
       plugins: [
@@ -909,6 +919,7 @@ function init(data) {
     updateDetailBtn();
     updateKeyBtn();
     window.__graph = graph;
+    activeGraph = graph;   // SPA 卸载时由 destroy() 释放画布
   }
 
   // "显示全部节点 / 仅显示小节" 切换按钮

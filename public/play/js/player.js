@@ -9,9 +9,14 @@
  * - 足迹(全局累计): qf_foot_story 已访问故事, qf_foot_choice 选项 anchor→已选下标,
  *   供 /branch(原 /plot/branch) 的「我的足迹」高亮层读取。
  */
-(function () {
-  "use strict";
+// document 级监听引用: destroy 时移除, 避免跨路由重复绑定
+var bgmAudio = null;
+var toastTimer = null;
+var docKeyHandler = null;
+var docClickHandler = null;
 
+export function run() {
+  "use strict";
   // v2: 剧本结构升级(调查/问答菜单重构+数值链补全)后旧链可能与新结构错位, 直接弃用
   var LS_CHAIN = "qf_play_chain.v2";
   var LS_FOOT_S = "qf_foot_story";
@@ -36,7 +41,7 @@
   var paraTarget = null;   // 调查点文本收纳目标(面板内展开区), null 时写入对话流
   var invCur = null;       // 当前展开的调查点 {node, idx, box}
 
-  var bgmAudio = null;
+  bgmAudio = null;
 
   // ---------------------------------------------------------------- 章节
   // 章标记故事: 名字恰为「序章/第X章/终章」; 全部经 jump 进入, 在 startStory 挂横幅即可覆盖
@@ -94,7 +99,7 @@
   function lsSet(k, v) {
     try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* 满/隐私模式忽略 */ }
   }
-  var toastTimer = null;
+  toastTimer = null;
   function toast(msg) {
     toastEl.textContent = msg;
     toastEl.classList.remove("hidden");
@@ -805,7 +810,7 @@
     }
   }
 
-  document.addEventListener("keydown", function (ev) {
+  docKeyHandler = function (ev) {
     if (ev.target && /INPUT|TEXTAREA|SELECT/.test(ev.target.tagName)) return;
     if (ev.key === " " || ev.key === "Enter") {
       ev.preventDefault();
@@ -814,7 +819,8 @@
       ev.preventDefault();
       back(1);
     }
-  });
+  };
+  document.addEventListener("keydown", docKeyHandler);
 
   // ---------------------------------------------------------------- 章节菜单
   function bindChapterMenu() {
@@ -873,13 +879,14 @@
     toastEl = $("toast");
     // 点击屏幕任意处推进剧情(按钮/链接/历史面板除外);
     // 等待选择时 waiting=false, advance() 无操作, 不会误跳选项
-    document.addEventListener("click", function (ev) {
+    docClickHandler = function (ev) {
       var cm = $("chapter-menu");
       if (cm && !cm.classList.contains("hidden") &&
           !ev.target.closest("#chapter-menu, #btn-chapter")) cm.classList.add("hidden");
       if (ev.target && ev.target.closest && ev.target.closest("button, a, #history")) return;
       advance();
-    });
+    };
+    document.addEventListener("click", docClickHandler);
     bindTopbar();
 
     DATA = window.__PLAY_DATA__;
@@ -924,7 +931,7 @@
   }
 
   // no-cache: 剧本数据更新后浏览器必须重新协商, 避免玩到旧剧本
-  Promise.all([
+  return Promise.all([
     fetch("/play/js/script.json?v=20261020a", { cache: "no-cache" }),
     fetch("/plot/js/branch_vars.json?v=20261020a", { cache: "no-cache" })
       .catch(function () { return null; }),
@@ -940,6 +947,18 @@
       boot();
     })
     .catch(function (e) {
-      document.body.innerHTML = "<p style='padding:40px'>剧本数据加载失败: " + esc(e.message) + "</p>";
+      var flow = document.getElementById("flow");
+      if (flow) flow.innerHTML = "<p style='padding:40px'>剧本数据加载失败: " + esc(e.message) + "</p>";
     });
-})();
+}
+
+// SPA 卸载: 移除 document 级监听/停止音频, 避免跨路由残留
+export function destroy() {
+  try {
+    if (docKeyHandler) document.removeEventListener("keydown", docKeyHandler);
+    if (docClickHandler) document.removeEventListener("click", docClickHandler);
+    docKeyHandler = docClickHandler = null;
+    if (typeof bgmAudio !== "undefined" && bgmAudio) { bgmAudio.pause(); bgmAudio = null; }
+    if (typeof toastTimer !== "undefined") clearTimeout(toastTimer);
+  } catch (e) { /* ignore */ }
+}

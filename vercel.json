@@ -4,17 +4,12 @@
   "cleanUrls": true,
   "trailingSlash": false,
   "rewrites": [
-    {
-      "source": "/plot",
-      "destination": "/plot/index.html"
-    },
-    {
-      "source": "/play",
-      "destination": "/play/index.html"
-    },
-    {
-      "source": "/branch",
-      "destination": "/branch/index.html"
-    }
+    { "source": "/", "destination": "/index.html" },
+    { "source": "/game", "destination": "/index.html" },
+    { "source": "/plot", "destination": "/index.html" },
+    { "source": "/branch", "destination": "/index.html" },
+    { "source": "/play", "destination": "/index.html" },
+    { "source": "/plot/branch", "destination": "/index.html" },
+    { "source": "/game.html", "destination": "/index.html" }
   ]
 }

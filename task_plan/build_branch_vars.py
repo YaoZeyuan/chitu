@@ -118,6 +118,7 @@ def main():
                         sv.add(vid)
                     if sid is not None:
                         # 提取条件各分支的走向(首个文本节点), 供脚注说明"选了会怎样"
+                        # 格式: 若＜8 → 摘要；否则 → 摘要 (空条件分支即"不满足条件"的一侧)
                         parts = []
                         for b in it.get("branches", []) or []:
                             snip = ""
@@ -125,10 +126,11 @@ def main():
                                 if n2.get("t") == "text":
                                     snip = strip_html(n2.get("h"))[:36]
                                     break
-                            ct = strip_html(b.get("cond", "")) or "否则"
+                            ct = strip_html(b.get("cond", ""))
+                            label = ("若" + re.sub(r"^数值：?\[[^\]]*\]\s*", "", ct)) if ct else "否则"
                             if snip:
-                                parts.append(ct + " → " + snip)
-                        hint = "；".join(parts)[:160]
+                                parts.append(label + " → " + snip)
+                        hint = "；".join(parts)[:200]
                         use_sites[vid].append((sid, c, hint))
 
         walk_items(items, fn)
