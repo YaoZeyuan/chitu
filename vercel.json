@@ -4,12 +4,6 @@
   "cleanUrls": true,
   "trailingSlash": false,
   "rewrites": [
-    { "source": "/", "destination": "/index.html" },
-    { "source": "/game", "destination": "/index.html" },
-    { "source": "/plot", "destination": "/index.html" },
-    { "source": "/branch", "destination": "/index.html" },
-    { "source": "/play", "destination": "/index.html" },
-    { "source": "/plot/branch", "destination": "/index.html" },
-    { "source": "/game.html", "destination": "/index.html" }
+    { "source": "/((?!assets/).*)", "destination": "/index.html" }
   ]
 }
