@@ -312,7 +312,8 @@ export function run() {
     dbgPanel.appendChild(dbgVarBox);
     var logSec = document.createElement("div");
     logSec.className = "dbg-sec";
-    logSec.textContent = "决策日志 (新在下)";
+    logSec.textContent = "决策日志（按发生顺序记录，最新在最下面）";
+    logSec.title = "每当你推进剧情，这里会依次记录：进入的故事、变量被改成了什么、每个条件判断命中了哪个分支。刚发生的记录追加在底部并自动滚动到那里。";
     dbgPanel.appendChild(logSec);
     dbgLogBox = document.createElement("div");
     dbgLogBox.className = "dbg-log";
