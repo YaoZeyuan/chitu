@@ -340,3 +340,52 @@
   padding: 6px 10px;
   margin: 10px 0;
 }
+
+/* ---- debug 决策面板(?debug 参数开启) ---- */
+#debug-panel {
+  position: fixed;
+  top: 57px; right: 0;
+  width: min(320px, 92vw);
+  max-height: calc(100vh - 70px);
+  overflow-y: auto;
+  background: var(--panel);
+  border-left: 1px solid var(--line);
+  border-top: 1px solid var(--line);
+  box-shadow: -4px 0 14px rgba(50, 40, 20, .10);
+  padding: 12px 14px;
+  z-index: 45;
+  font-size: 12px;
+  line-height: 1.6;
+}
+#debug-panel.hidden { display: none; }
+#debug-panel .dbg-head {
+  font-weight: 700; font-size: 13px;
+  color: #b06a14;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 6px; margin-bottom: 8px;
+}
+#debug-panel .dbg-sec {
+  font-weight: 700; font-size: 11.5px;
+  color: var(--muted);
+  margin: 8px 0 4px;
+  letter-spacing: 1px;
+}
+#debug-panel .dbg-vars { margin-bottom: 4px; }
+#debug-panel .dbg-var { border-bottom: 1px dashed rgba(120, 110, 90, .18); padding: 1px 0; }
+#debug-panel .dbg-var b { font-weight: 600; color: var(--ink); }
+#debug-panel .dbg-var i { font-style: normal; color: var(--muted); font-size: 11px; margin-left: 4px; }
+#debug-panel .dbg-var.dbg-none { color: var(--muted); border: none; }
+#debug-panel .dbg-log { max-height: 46vh; overflow-y: auto; }
+#debug-panel .dbg-item {
+  white-space: pre-wrap;
+  word-break: break-all;
+  padding: 3px 6px;
+  margin: 2px 0;
+  border-left: 3px solid var(--line);
+  background: rgba(120, 110, 90, .05);
+  color: var(--ink);
+}
+#debug-panel .dbg-item.dbg-story { border-left-color: #4a7ec7; color: #4a7ec7; font-weight: 600; }
+#debug-panel .dbg-item.dbg-pick { border-left-color: #b06a14; color: #b06a14; }
+#debug-panel .dbg-item.dbg-wait { border-left-color: #9c9c11; color: #7a7a0d; }
+#debug-panel .dbg-item.dbg-empty { color: var(--muted); }

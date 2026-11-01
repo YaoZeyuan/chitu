@@ -40,6 +40,8 @@ export function run() {
   var flowEl, stageEl, histEl, histListEl, toastEl, optsDock;
   var paraTarget = null;   // 调查点文本收纳目标(面板内展开区), null 时写入对话流
   var invCur = null;       // 当前展开的调查点 {node, idx, box}
+  var DEBUG = false;       // ?debug 参数: 展示决策依据面板(变量取值+判定日志)
+  var dbgPanel = null, dbgVarBox = null, dbgLogBox = null;
 
   bgmAudio = null;
 
@@ -149,6 +151,91 @@ export function run() {
     if (op === "=" ) vars[id] = rv;
     else if (op === "+" || op === "＋" || op === "+=" || op === "＋=") vars[id] = (vars[id] || 0) + rv;
     else vars[id] = (vars[id] || 0) - rv;
+  }
+
+  // ---------------------------------------------------------------- debug 决策面板
+  // URL 带 debug 参数(存在或为逻辑真: 1/true/yes/on, debug=0/false 关闭)时启用:
+  // 面板展示当前变量取值 + 决策日志(进入故事/变量赋值/条件判定各分支与命中结果)
+  function varName(id) {
+    var meta = window.__VARS_META__ || {};
+    return meta[id] ? meta[id].n : "变量#" + id;
+  }
+  function dbgInit() {
+    var m = location.search.match(/[?&]debug(?:=([^&]*))?/);
+    if (!m) return;
+    var v = (m[1] == null ? "" : m[1]).toLowerCase();
+    DEBUG = (v === "" || v === "1" || v === "true" || v === "yes" || v === "on");
+    if (!DEBUG) return;
+    dbgPanel = document.createElement("div");
+    dbgPanel.id = "debug-panel";
+    var head = document.createElement("div");
+    head.className = "dbg-head";
+    head.textContent = "⚑ Debug · 决策依据";
+    dbgPanel.appendChild(head);
+    var varSec = document.createElement("div");
+    varSec.className = "dbg-sec";
+    varSec.textContent = "当前变量";
+    dbgPanel.appendChild(varSec);
+    dbgVarBox = document.createElement("div");
+    dbgVarBox.className = "dbg-vars";
+    dbgPanel.appendChild(dbgVarBox);
+    var logSec = document.createElement("div");
+    logSec.className = "dbg-sec";
+    logSec.textContent = "决策日志 (新在下)";
+    dbgPanel.appendChild(logSec);
+    dbgLogBox = document.createElement("div");
+    dbgLogBox.className = "dbg-log";
+    dbgPanel.appendChild(dbgLogBox);
+    document.body.appendChild(dbgPanel);
+    dbgRenderVars();
+  }
+  function dbgRenderVars() {
+    if (!dbgVarBox) return;
+    var ids = Object.keys(vars).map(Number).sort(function (a, b) { return a - b; });
+    dbgVarBox.innerHTML = "";
+    if (!ids.length) { dbgVarBox.innerHTML = "<div class='dbg-var dbg-none'>(尚无变量)</div>"; return; }
+    ids.forEach(function (id) {
+      var d = document.createElement("div");
+      d.className = "dbg-var";
+      d.innerHTML = "<b>" + esc(varName(id)) + "</b><i>[" + id + "]</i> = " + esc(vars[id]);
+      dbgVarBox.appendChild(d);
+    });
+  }
+  function dbgLog(msg, cls) {
+    if (!dbgLogBox) return;
+    var d = document.createElement("div");
+    d.className = "dbg-item" + (cls ? " " + cls : "");
+    d.textContent = msg;
+    dbgLogBox.appendChild(d);
+    while (dbgLogBox.children.length > 400) dbgLogBox.removeChild(dbgLogBox.firstChild);
+    dbgLogBox.scrollTop = dbgLogBox.scrollHeight;
+  }
+  function dbgStory(sid, name) {
+    dbgLog("▶ 进入「" + name + "」(#" + sid + ")", "dbg-story");
+    dbgRenderVars();
+  }
+  function dbgAssign(expr) {
+    var m = String(expr || "").match(/\[(\d+)/);
+    dbgLog("✎ 赋值 " + expr + (m ? "  ⇒ " + varName(vid(m[1])) + " = " + (vars[vid(m[1])] || 0) : ""));
+    dbgRenderVars();
+  }
+  // 记录一次条件判定: 逐分支列出条件、当前变量取值与是否命中
+  function dbgCond(node) {
+    var chosenIdx = -1;
+    for (var bi = 0; bi < node.branches.length - 1; bi++) {
+      if (evalExpr(node.branches[bi].cond)) { chosenIdx = bi; break; }
+    }
+    if (chosenIdx < 0) chosenIdx = node.branches.length - 1;
+    var lines = node.branches.map(function (b, i) {
+      var hitMark = i === chosenIdx ? "✓" : "✗";
+      var cur = "";
+      var m = String(b.cond || "").match(/\[(\d+)/);
+      if (m) cur = " (当前 " + varName(vid(m[1])) + "=" + (vars[vid(m[1])] || 0) + ")";
+      var empty = b.body.length ? "" : " [空分支]";
+      return "  " + hitMark + " " + (b.cond || "(否则/默认)") + cur + empty;
+    });
+    dbgLog("⚖ 条件判定 @「" + curStoryName + "」:\n" + lines.join("\n"),
+      node.branches[chosenIdx].body.length ? "" : "dbg-empty");
   }
 
   // ---------------------------------------------------------------- 足迹
@@ -267,6 +354,7 @@ export function run() {
     if (!st) { flowEnd(); return; }
     curStory = Number(sid);
     curStoryName = st.name;
+    if (DEBUG) dbgStory(curStory, st.name);
     // 进入章节标记故事: 对话流插入醒目章节横幅
     if (CH_RE.test(st.name)) appendChapterMark(st.name);
     // 开局场景为空时(冷启动/?s=定位): 预应用开场直线段的第一个背景图,
@@ -339,12 +427,14 @@ export function run() {
           break;
         case "assign":
           applyAssign(node.expr);
+          if (DEBUG) dbgAssign(node.expr);
           break;
         case "cond": {
           var chosen = node.branches[node.branches.length - 1];
           for (var bi = 0; bi < node.branches.length - 1; bi++) {
             if (evalExpr(node.branches[bi].cond)) { chosen = node.branches[bi]; break; }
           }
+          if (DEBUG) dbgCond(node);
           frames.push({ items: chosen.body, i: 0 });
           break;
         }
@@ -461,6 +551,7 @@ export function run() {
   function showChoices(node) {
     pendingChoice = node;
     pendingInvest = null;
+    if (DEBUG) dbgLog("⏸ 等待选择 @「" + curStoryName + "」: " + node.opts.map(function (o) { return o.txt; }).join(" | "), "dbg-wait");
     var box = document.createElement("div");
     box.className = "opts";
     pendingBox = box;
@@ -492,6 +583,7 @@ export function run() {
     footChoice(o.a, idx);
     renderHistory();
     appendPicked(o.txt);
+    if (DEBUG) dbgLog("✔ 已选: " + o.txt, "dbg-pick");
     frames.push({ items: o.body, i: 0 });
     step();
   }
@@ -499,6 +591,7 @@ export function run() {
   function showInvest(node) {
     pendingInvest = node;
     pendingChoice = null;
+    if (DEBUG) dbgLog("⏸ 等待调查 @「" + curStoryName + "」: " + (node.points || []).map(function (p) { return p.name; }).join(" | "), "dbg-wait");
     // 同一次调查共用一个面板(原地刷新), 不再每次追加新面板堆积对话流
     var box;
     if (node._panel && node._panel.isConnected) {
@@ -846,6 +939,14 @@ export function run() {
     $("btn-back").addEventListener("click", function () { back(1); });
     $("btn-key").addEventListener("click", backToKey);
     $("btn-restart").addEventListener("click", restart);
+    if (DEBUG) {
+      // debug 模式: 顶栏追加变量面板开关; 进入页面即自动展开
+      var mediaBtn0 = $("btn-media");
+      mkBtn(mediaBtn0.parentNode, "🔧 变量", function () {
+        dbgPanel.classList.toggle("hidden");
+      });
+      dbgPanel.classList.remove("hidden");
+    }
     $("btn-history").addEventListener("click", function () {
       histEl.classList.toggle("hidden");
       this.classList.toggle("active");
@@ -887,6 +988,7 @@ export function run() {
       advance();
     };
     document.addEventListener("click", docClickHandler);
+    dbgInit();   // 先于 bindTopbar: 顶栏的 🔧 变量按钮依赖面板已创建
     bindTopbar();
 
     DATA = window.__PLAY_DATA__;
@@ -958,6 +1060,8 @@ export function destroy() {
     if (docKeyHandler) document.removeEventListener("keydown", docKeyHandler);
     if (docClickHandler) document.removeEventListener("click", docClickHandler);
     docKeyHandler = docClickHandler = null;
+    var dp = document.getElementById("debug-panel");
+    if (dp) dp.remove();
     if (typeof bgmAudio !== "undefined" && bgmAudio) { bgmAudio.pause(); bgmAudio = null; }
     if (typeof toastTimer !== "undefined") clearTimeout(toastTimer);
   } catch (e) { /* ignore */ }
