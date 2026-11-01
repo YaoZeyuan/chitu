@@ -78,6 +78,98 @@ export function run() {
     flowEl.appendChild(d);
     scrollWin();
   }
+
+  // ---------------------------------------------------------------- 章首变量提示
+  // 每章开始时, 从 branch_vars.json 计算「此前章节赋值 + 本章会被用到」的变量,
+  // 在章横幅下方列出(名称/当前值/后续分支效果), 并允许行内改值,
+  // 避免跨章数值暗门(如 张晓梦已死=2 才能进安四贤家线)把玩家静默锁死。
+  var chVarsShown = {};    // 本局已提示过的章节(避免重复渲染)
+  function chRankOf(markSid) {
+    for (var i = 0; i < CHAPTERS.length; i++) {
+      if (CHAPTERS[i].sid === Number(markSid)) return i;
+    }
+    return -1;
+  }
+  function chapterAffectingVars(markSid) {
+    var all = window.__VARS_ALL__;
+    if (!all || !all.uses) return [];
+    var cRank = chRankOf(markSid);
+    if (cRank < 0) return [];
+    var meta = window.__VARS_META__ || {};
+    var rows = [];
+    Object.keys(all.uses).forEach(function (vid) {
+      var id = Number(vid);
+      var assigns = (all.assign && all.assign[vid]) || [];
+      var prior = assigns.some(function (a) {
+        var ch = chapterOfStory(Number(a));
+        return ch != null && ch !== Number(markSid) &&
+               chRankOf(ch) >= 0 && chRankOf(ch) < cRank;
+      });
+      if (!prior) return;
+      var here = (all.uses[vid] || []).filter(function (u) {
+        return chapterOfStory(Number(u[0])) === Number(markSid);
+      });
+      if (!here.length) return;
+      rows.push({
+        id: id,
+        name: meta[vid] ? meta[vid].n : "变量#" + vid,
+        kind: meta[vid] ? meta[vid].kind : "",
+        choices: meta[vid] && meta[vid].p ? meta[vid].p : [],
+        uses: here
+      });
+    });
+    rows.sort(function (a, b) { return a.id - b.id; });
+    return rows;
+  }
+  function appendChapterVars(markSid) {
+    if (chVarsShown[markSid]) return;
+    chVarsShown[markSid] = true;
+    var rows = chapterAffectingVars(markSid);
+    if (!rows.length) return;
+    var box = document.createElement("div");
+    box.className = "chapter-vars";
+    var head = document.createElement("div");
+    head.className = "cv-head";
+    head.textContent = "⚑ 影响本章的既有变量 (点击数值可修改)";
+    box.appendChild(head);
+    rows.forEach(function (r) {
+      var line = document.createElement("div");
+      line.className = "cv-row";
+      var val = document.createElement("span");
+      val.className = "cv-val";
+      val.textContent = r.name + " = " + (vars[r.id] || 0);
+      val.title = "点击修改该变量值";
+      val.addEventListener("click", function (ev) {
+        ev.stopPropagation();
+        var input = prompt("设定「" + r.name + "」的值" +
+          (r.choices.length ? " (常见取值: " + r.choices.join("/") + ")" : ""),
+          String(vars[r.id] || 0));
+        if (input === null) return;
+        var n = parseInt(input, 10);
+        if (isNaN(n)) { toast("未修改: 请输入整数"); return; }
+        vars[r.id] = n;
+        val.textContent = r.name + " = " + n;
+        if (DEBUG) dbgLog("✎ 手动设定 " + r.name + "[" + r.id + "] = " + n, "dbg-pick");
+        toast(r.name + " 已设为 " + n);
+      });
+      line.appendChild(val);
+      // 作用说明: 各分支的「若条件 → 走向」提示, 去重后拼接
+      var tips = [];
+      r.uses.forEach(function (u) {
+        var hint = String(u[2] || u[1] || "").trim();
+        if (hint && tips.indexOf(hint) < 0) tips.push(hint);
+      });
+      if (tips.length) {
+        var desc = document.createElement("span");
+        desc.className = "cv-desc";
+        desc.textContent = tips.join("；");
+        line.appendChild(desc);
+      }
+      box.appendChild(line);
+    });
+    flowEl.appendChild(box);
+    scrollWin();
+  }
   // 从指定章节开新局: 不带之前章节的数值(与分支图跳转同语义)
   function jumpChapter(ch) {
     $("chapter-menu").classList.add("hidden");
@@ -356,7 +448,10 @@ export function run() {
     curStoryName = st.name;
     if (DEBUG) dbgStory(curStory, st.name);
     // 进入章节标记故事: 对话流插入醒目章节横幅
-    if (CH_RE.test(st.name)) appendChapterMark(st.name);
+    if (CH_RE.test(st.name)) {
+      appendChapterMark(st.name);
+      appendChapterVars(curStory);  // 章首提示影响本章的先前变量(live/rebuild 均渲染, 数值即当时状态)
+    }
     // 开局场景为空时(冷启动/?s=定位): 预应用开场直线段的第一个背景图,
     // 原游戏此时继承标题画面/上一场景的图, 不然首几段文字没有画面
     if (!stageEl.style.backgroundImage) {
@@ -742,6 +837,7 @@ export function run() {
     pendingInvest = null;
     ended = false;
     vars = {};
+    chVarsShown = {};   // 重建/重开时章首变量提示随各章重新渲染
     var resume = chain.length > 0;   // 有选择链: rebuild 重建历史; 无链: 从头直播
     mode = resume ? "rebuild" : "live";
     if (seedVars && !resume) {
@@ -1045,7 +1141,10 @@ export function run() {
     })
     .then(function (out) {
       window.__PLAY_DATA__ = out[0];
-      if (out[1]) window.__VARS_META__ = out[1].vars || {};
+      if (out[1]) {
+        window.__VARS_META__ = out[1].vars || {};
+        window.__VARS_ALL__ = out[1];   // 全量元数据(assign/uses/marks): 章首变量提示用
+      }
       boot();
     })
     .catch(function (e) {

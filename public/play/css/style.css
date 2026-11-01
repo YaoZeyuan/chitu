@@ -389,3 +389,31 @@
 #debug-panel .dbg-item.dbg-pick { border-left-color: #b06a14; color: #b06a14; }
 #debug-panel .dbg-item.dbg-wait { border-left-color: #9c9c11; color: #7a7a0d; }
 #debug-panel .dbg-item.dbg-empty { color: var(--muted); }
+
+/* ---- 章首「影响本章的既有变量」提示 ---- */
+#flow .chapter-vars {
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--ink);
+  background: #f2f5ef;
+  border: 1px dashed #7a8f5a;
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin: 10px 0;
+}
+#flow .chapter-vars .cv-head {
+  font-weight: 700;
+  color: #5a7238;
+  margin-bottom: 4px;
+}
+#flow .chapter-vars .cv-row { margin: 2px 0; }
+#flow .chapter-vars .cv-val {
+  font-weight: 700;
+  color: #2d5a8e;
+  cursor: pointer;
+  border-bottom: 1px dashed #2d5a8e;
+  margin-right: 8px;
+  user-select: none;
+}
+#flow .chapter-vars .cv-val:hover { color: #16406b; }
+#flow .chapter-vars .cv-desc { color: #6b6b57; }
