@@ -90,6 +90,9 @@ export function run() {
     }
     return -1;
   }
+  // 「影响本章的既有变量」: 之前章节赋值、且进入本章后到使用点为止未被本章重写的变量。
+  // 判定: 存在本章使用点 U, 满足 ①更早章节赋过值 ②本章内在 U 之前(含同故事)没有重新赋值。
+  // 这样本章内部"先赋值再用"的临时变量(如要素一/剧情跳转)不会被误列。
   function chapterAffectingVars(markSid) {
     var all = window.__VARS_ALL__;
     if (!all || !all.uses) return [];
@@ -100,26 +103,58 @@ export function run() {
     Object.keys(all.uses).forEach(function (vid) {
       var id = Number(vid);
       var assigns = (all.assign && all.assign[vid]) || [];
-      var prior = assigns.some(function (a) {
-        var ch = chapterOfStory(Number(a));
-        return ch != null && ch !== Number(markSid) &&
-               chRankOf(ch) >= 0 && chRankOf(ch) < cRank;
+      var qual = [];
+      (all.uses[vid] || []).forEach(function (u) {
+        var usid = Number(u[0]);
+        if (chapterOfStory(usid) !== Number(markSid)) return;
+        var hasPrior = assigns.some(function (a) {
+          var ch = chapterOfStory(Number(a));
+          if (ch == null) return true;   // 章前内容(如「介绍」)也属于本章之前
+          return ch !== Number(markSid) && chRankOf(ch) >= 0 && chRankOf(ch) < cRank;
+        });
+        if (!hasPrior) return;
+        var covered = assigns.some(function (a2) {
+          return chapterOfStory(Number(a2)) === Number(markSid) && Number(a2) <= usid;
+        });
+        if (covered) return;
+        qual.push(u);
       });
-      if (!prior) return;
-      var here = (all.uses[vid] || []).filter(function (u) {
-        return chapterOfStory(Number(u[0])) === Number(markSid);
-      });
-      if (!here.length) return;
+      if (!qual.length) return;
       rows.push({
         id: id,
         name: meta[vid] ? meta[vid].n : "变量#" + vid,
         kind: meta[vid] ? meta[vid].kind : "",
         choices: meta[vid] && meta[vid].p ? meta[vid].p : [],
-        uses: here
+        uses: qual
       });
     });
     rows.sort(function (a, b) { return a.id - b.id; });
     return rows;
+  }
+  // 把 uses 的 hint("若＝ 2 → 甲。；否则 → 乙。") 改写成带剧情位置的通俗说明
+  function describeUse(u) {
+    var sid = Number(u[0]);
+    var st = DATA.stories[sid];
+    var where = "";
+    if (st && st.name && !/^c\d+p\d+$/.test(st.name)) where = "剧情「" + st.name + "」";
+    var hint = String(u[2] || "").trim();
+    var segs = hint ? hint.split("；否则 → ") : [];
+    var head = segs.length ? segs[0] : "";
+    var no = segs.length > 1 ? segs[1] : "";
+    if (head.indexOf("若") === 0) head = head.slice(1);
+    var yes = "";
+    var arrow = head.indexOf(" → ");
+    if (arrow >= 0) { yes = head.slice(arrow + 3); head = head.slice(0, arrow); }
+    function quote(t) {
+      t = String(t || "").trim();
+      if (!t) return "";
+      return "「" + (t.length > 42 ? t.slice(0, 42) + "…" : t) + "」";
+    }
+    var out = where + (where ? "处判断：" : "本章剧情判断：");
+    if (head) out += "值" + head + "时";
+    if (yes) out += " → 走" + quote(yes);
+    if (no) out += "；否则走" + quote(no);
+    return out;
   }
   function appendChapterVars(markSid) {
     if (chVarsShown[markSid]) return;
@@ -130,7 +165,7 @@ export function run() {
     box.className = "chapter-vars";
     var head = document.createElement("div");
     head.className = "cv-head";
-    head.textContent = "⚑ 影响本章的既有变量 (点击数值可修改)";
+    head.textContent = "⚑ 之前章节遗留、会影响本章剧情的变量 (点击数值可修改)";
     box.appendChild(head);
     rows.forEach(function (r) {
       var line = document.createElement("div");
@@ -153,16 +188,20 @@ export function run() {
         toast(r.name + " 已设为 " + n);
       });
       line.appendChild(val);
-      // 作用说明: 各分支的「若条件 → 走向」提示, 去重后拼接
-      var tips = [];
+      // 作用说明: 每个使用点一行通俗说明(剧情位置 + 两种走向)
+      var lines = [];
       r.uses.forEach(function (u) {
-        var hint = String(u[2] || u[1] || "").trim();
-        if (hint && tips.indexOf(hint) < 0) tips.push(hint);
+        var t = describeUse(u);
+        if (t && lines.indexOf(t) < 0) lines.push(t);
       });
-      if (tips.length) {
-        var desc = document.createElement("span");
+      if (lines.length) {
+        var desc = document.createElement("div");
         desc.className = "cv-desc";
-        desc.textContent = tips.join("；");
+        lines.forEach(function (t) {
+          var p = document.createElement("div");
+          p.textContent = t;
+          desc.appendChild(p);
+        });
         line.appendChild(desc);
       }
       box.appendChild(line);

@@ -27,14 +27,14 @@
 import { onMounted, onUnmounted } from "vue";
 import { usePageCss } from "../page-assets";
 
-const css = usePageCss(["/plot/css/style.css?v=20261019c", "/play/css/style.css?v=20261022b"]);
+const css = usePageCss(["/plot/css/style.css?v=20261019c", "/play/css/style.css?v=20261101a"]);
 let mod = null;
 
 onMounted(async () => {
   css.inject();
   document.body.classList.add("page-full");
   try {
-    const url = "/play/js/player.js?v=20261022b"; mod = await import(/* @vite-ignore */ url);
+    const url = "/play/js/player.js?v=20261101a"; mod = await import(/* @vite-ignore */ url);
     await mod.run();
   } catch (e) {
     console.error(e);

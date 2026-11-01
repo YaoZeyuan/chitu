@@ -416,4 +416,5 @@
   user-select: none;
 }
 #flow .chapter-vars .cv-val:hover { color: #16406b; }
-#flow .chapter-vars .cv-desc { color: #6b6b57; }
+#flow .chapter-vars .cv-desc { color: #6b6b57; margin-top: 2px; }
+#flow .chapter-vars .cv-desc > div { margin: 1px 0; }
