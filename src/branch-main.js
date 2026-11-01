@@ -222,6 +222,9 @@ function init(data) {
         label: n.name,
         type: "diamond",
         size: [230, 86],
+        // v4 默认连到包围盒交点, 菱形只有四顶点贴 bbox, 箭头会悬空;
+        // 声明四顶点为锚点, 边自动选离对端最近的顶点吸附
+        anchorPoints: [[0.5, 0], [1, 0.5], [0.5, 1], [0, 0.5]],
         style: {
           stroke: footOn && !cl ? "#d8d2c4" : (footOn ? "#d9822b" : "#6a5a8a"),
           fill: footOn && !cl ? "#f2efe8" : (footOn ? "#fdf2e3" : "#f2eef8"),
