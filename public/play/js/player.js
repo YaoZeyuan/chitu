@@ -32,7 +32,14 @@ export function run() {
   var chain = [];           // 本局选择链
   var chainIdx = 0;         // 重放游标
   var chainDone = false;    // 重放时链条已耗尽: 保持快进直到下一个决策点(选项/调查面板)再转 live
-  var mode = "live";        // live | rebuild (重建: 瞬时渲染历史, chain 耗尽转 live)
+  var mode = "live";        // live | rebuild (重建: 瞬时渲染历史, chain 耗尽转 live) | guide (分支图路径制导重放)
+  var guideTargets = null;  // guide 模式: 目标故事序列(分支图 BFS 路径, ?path= 传入)
+  var guideStart = 1;       // guide 起点(路径首站)
+  var guideAttempt = 0;     // 尝试次数: 剧终/死路时轮换候选重跑, 绕开变量条件暗门
+  var GUIDE_MAX_ATTEMPTS = 40;
+  var guideIdx = 0;         // 已到达的站数
+  var guideSteps = 0;       // 决策计数, 超限中止防失控
+  var guideInvestTried = new Map(); // invest 节点 -> 退出尝试次数(被劝回后改为访问调查点)
   var waiting = false;      // 停在文本等待点击
   var ended = false;        // 剧终
   var curStory = 0;
@@ -279,9 +286,9 @@ export function run() {
     var id = vid(m[1]), op = m[2], rhs = m[3].trim();
     var rm = rhs.match(/^数值：?\[(\d+)/);
     var rv = rm ? (vars[vid(rm[1])] || 0) : (parseFloat(rhs) || 0);
-    // 分支图种子粘性: 故事开局的"清零初始化"不覆盖种子值,
-    // 种子语义 = 「走到该节点时已累计的取值」, 后续 += 在其上累加
-    if (op === "=" && rv === 0 && seedVars && seedVars[id] != null) return;
+    // 分支图种子粘性: 种子值 = 「路径/玩家指定的该变量既定取值」,
+    // 后续 "=" 赋值(清零初始化/按选择重算)一律不覆盖种子, += / -= 在其上增减
+    if (op === "=" && seedVars && seedVars[id] != null) return;
     if (op === "=" ) vars[id] = rv;
     else if (op === "+" || op === "＋" || op === "+=" || op === "＋=") vars[id] = (vars[id] || 0) + rv;
     else vars[id] = (vars[id] || 0) - rv;
@@ -542,6 +549,26 @@ export function run() {
     if (!st) { flowEnd(); return; }
     curStory = Number(sid);
     curStoryName = st.name;
+    // guide 制导: 抵达目标序列中的下一站则推进指针; 全部走完即交还控制。
+    // 绕路恢复: 实际流程因变量条件偏离 BFS 最短路时, 跳过从当前位置已不可达的站点,
+    // 保证制导总能收敛到最终节点(来时路线=一条真实可重放的通路, 未必逐边等于最短路)。
+    if (mode === "guide" && guideTargets) {
+      while (guideIdx < guideTargets.length) {
+        var T = Number(guideTargets[guideIdx]);
+        if (T === curStory) { guideIdx++; continue; }
+        if (storyReachDeep(curStory).has(T)) break;   // 下一站仍可达: 留作目标
+        if (DEBUG) dbgLog("🤖 跳过不可达站点 #" + T + " (当前 @" + curStory + ")", "dbg-pick");
+        guideIdx++;                                    // 已不可达: 跳过
+      }
+      if (guideIdx >= guideTargets.length) {
+        // 站点处理完: 站在终点站才算成功; 被剪到别处(如岔进结局) = 本轮失败, 重试
+        if (curStory === Number(guideTargets[guideTargets.length - 1])) {
+          finishGuide(true);
+        } else {
+          guideDerailed();
+        }
+      }
+    }
     if (DEBUG) dbgStory(curStory, st.name);
     // 进入章节标记故事: 对话流插入醒目章节横幅
     if (CH_RE.test(st.name)) {
@@ -595,6 +622,13 @@ export function run() {
           // anchor 锚帧: 常驻栈上, 作为 loop_break 的截断点; 玩家操作驱动后续
           if (mode === "rebuild") {
             if (!consumeInvestEntry(fr.inv)) return; // chain 耗尽→转live并停
+          } else if (mode === "guide" && guideTargets) {
+            if (++guideSteps > 400) {
+              if (guideDerailed()) return;
+              showInvest(fr.inv); return;
+            }
+            guideInvestAct(fr.inv);
+            return;
           } else {
             showInvest(fr.inv);
             return;
@@ -607,8 +641,8 @@ export function run() {
       var node = fr.items[fr.i++];
       switch (node.t) {
         case "text":
-          if (mode === "live") { appendPara(node); waiting = true; return; }
-          appendPara(node);   // rebuild: 历史文本瞬时补齐
+          appendPara(node);
+          if (mode === "live") { waiting = true; return; }   // guide/rebuild: 瞬时渲染不等待
           break;
         case "trans":
           appendTrans(node.name);
@@ -663,10 +697,21 @@ export function run() {
           break;
         }
         case "end":
+          if (mode === "guide" && guideDerailed()) return;
           finishReplay();
           showEnd();
           return;
         case "choice": {
+          if (mode === "guide" && guideTargets) {
+            if (++guideSteps > 400) {
+              if (guideDerailed()) return;
+              showChoices(node); return;
+            }
+            pendingChoice = node; pendingInvest = null; pendingBox = null;
+            if (DEBUG) dbgLog("🤖 制导选择 @「" + curStoryName + "」→ opt" + guideChoiceIdx(node), "dbg-pick");
+            pickChoice(guideChoiceIdx(node));
+            return;
+          }
           if (mode === "rebuild") {
             drainVarEntries();
             var e = chain[chainIdx];
@@ -898,6 +943,7 @@ export function run() {
   }
 
   function flowEnd() {
+    if (mode === "guide" && guideDerailed()) return;
     finishReplay();
     var card = document.createElement("div");
     card.className = "endcard";
@@ -948,18 +994,325 @@ export function run() {
     }
   }
 
-  function replayAll(startSid, forceLive) {
+  // ---------------------------------------------------------------- 路径制导(guide)
+  // 分支图「从这里开始玩」带 ?path=<入口..节点的故事序列> 进入:
+  // 引擎从入口自动重放, 在每个选择点挑能到达下一站的选项, 调查点自动访谈后退出,
+  // 沿途正常记录链条 → 到达目标节点时 来时路线 = 通往该节点的真实可重放路径。
+  var reachMemo = new Map();     // 剧情体(items 数组) -> {set: 可直达故事集, falls: 是否落空回主线}
+  function setUnion(a, b) { if (b) b.forEach(function (v) { a.add(v); }); return a; }
+  // 分析一段剧情体: set = 途中可跳达的故事; falls = 执行完是否落空(未遇 jump/end/break,
+  // 流程继续走外层后续内容)。选择点自动决策靠 falls 区分「继续主线」与「岔路/剧终」。
+  function bodyReachEx(items) {
+    if (!items || !items.length) return null;
+    if (reachMemo.has(items)) return reachMemo.get(items);
+    var out = new Set();
+    var res = { set: out, falls: true };
+    reachMemo.set(items, res);   // 先占位防环(递归期间 falls 取近似值)
+    for (var i = 0; i < items.length; i++) {
+      var n = items[i];
+      if (n.t === "jump") {
+        if (n.to != null && !n.utility && DATA.stories[n.to]) out.add(Number(n.to));
+        if (!n.utility) { res.falls = false; break; }   // 无条件跳走: 流程离开; 工具转场则继续
+      } else if (n.t === "end" || n.t === "break") {
+        res.falls = false;
+        break;
+      } else if (n.t === "cond") {
+        (n.branches || []).forEach(function (b) { setUnion(out, bodyReach(b.body)); });
+      } else if (n.t === "choice") {
+        (n.opts || []).forEach(function (o) { setUnion(out, bodyReach(o.body)); });
+      } else if (n.t === "seq") {
+        setUnion(out, bodyReach(n.body));   // 序列体: 可达后流程落回主线继续
+      } else if (n.t === "invest") {
+        (n.points || []).forEach(function (p) { setUnion(out, bodyReach(p.body)); });
+        if (n.exit) setUnion(out, bodyReach(n.exit.body));
+        if (n.pre) setUnion(out, bodyReach(n.pre));
+      }
+    }
+    return res;
+  }
+  function bodyReach(items) {
+    var r = bodyReachEx(items);
+    return r ? r.set : null;
+  }
+  var storyReachMemo = {};
+  // 故事的传递可达集(经由中间故事), 用于绕路恢复; 有向图规模小, 记忆化即可
+  function storyReachDeep(sid) {
+    sid = Number(sid);
+    if (storyReachMemo[sid]) return storyReachMemo[sid];
+    var out = new Set();
+    storyReachMemo[sid] = out;   // 防环占位
+    var st = DATA.stories[sid];
+    if (!st) return out;
+    var direct = bodyReach(st.items) || new Set();
+    direct.forEach(function (t) {
+      out.add(t);
+      if (t !== sid) setUnion(out, storyReachDeep(t));
+    });
+    return out;
+  }
+  function deepReachOf(body) {
+    var out = new Set();
+    var direct = bodyReach(body) || new Set();
+    direct.forEach(function (t) {
+      out.add(t);
+      if (t !== curStory) setUnion(out, storyReachDeep(t));
+    });
+    return out;
+  }
+  // ---- 路径约束种子 ----
+  // 分支图菱形节点按「首条出边=条件成立」推导的 ?v= 种子对「缺省(else)分支」不成立:
+  // 引擎剧本里 else 分支的 cond 文本常与 if 分支相同(如 story24 两个 [010]＜10),
+  // 据图推种子会把流程推进 if 分支的死路。这里沿路径逐站用引擎剧本(准确分支结构)
+  // 重新提取「通往下一站」的真实变量约束, 覆盖 ?v= 中的近似种子。
+  var COND_RE = /\[(\d+)[^\]]*\]\s*(≥|≤|＞|＜|＝|≠)\s*(-?\d+)/;
+  function bodyLead(body, next) {
+    // 分支体走向: hit=跳往下一站 / miss=跳往别处或剧终 / complex=含决策点(交给制导) / fall=落空回主线
+    var items = body || [];
+    for (var i = 0; i < items.length; i++) {
+      var n = items[i];
+      if (n.t === "jump") {
+        if (n.utility || !(n.to != null && DATA.stories[n.to])) continue;   // 工具转场
+        return Number(n.to) === Number(next) ? "hit" : "miss";
+      }
+      if (n.t === "end") return "miss";
+      if (n.t === "choice" || n.t === "invest" || n.t === "cond") return "complex";
+    }
+    return "fall";
+  }
+  function addSeed(seeds, vid, op, val, needTrue) {
+    // needTrue=该分支必须命中 / 否则必须不命中; 映射为种子值(粘性种子会挡下后续 "=" 赋值)
+    // 返回 "avoid" 表示禁值约束(该分支不得命中且无法用单一种子表达 → 由调用方记录禁值)
+    var v = null, fam = null;   // fam: eq=精确 / lo=下界(越大越紧) / hi=上界(越小越紧)
+    if (needTrue) {
+      if (op === "＝") { v = val; fam = "eq"; }
+      else if (op === "＜") { v = val - 1; fam = "hi"; }
+      else if (op === "≤") { v = val; fam = "hi"; }
+      else if (op === "＞") { v = val + 1; fam = "lo"; }
+      else if (op === "≥") { v = val; fam = "lo"; }
+    } else {
+      if (op === "＝") return "avoid";     // ≠val 无法单值表达: 记禁值, 取安全值做种子
+      if (op === "≠") { v = val; fam = "eq"; }
+      else if (op === "＜") { v = val; fam = "lo"; }      // ≥ val
+      else if (op === "≤") { v = val + 1; fam = "lo"; }   // ＞ val
+      else if (op === "＞") { v = val; fam = "hi"; }      // ≤ val
+      else if (op === "≥") { v = val - 1; fam = "hi"; }   // ＜ val
+    }
+    if (v == null || v < 0) return null;
+    vid = Number(vid);
+    var cur = seeds[vid];
+    if (cur == null) { seeds[vid] = { v: v, fam: fam }; return null; }
+    if (fam === "eq" || cur.fam === "eq") { seeds[vid] = { v: fam === "eq" ? v : cur.v, fam: "eq" }; return null; }
+    if (fam === "lo") seeds[vid] = { v: Math.max(cur.v, v), fam: "lo" };
+    else seeds[vid] = { v: Math.min(cur.v, v), fam: "hi" };
+    return null;
+  }
+  function derivePathSeeds(targets) {
+    var seeds = {}, avoid = {};   // avoid[vid] = {禁值: 1..} 该变量取这些值会岔进死路分支
+    function scanItems(items, next) {
+      (items || []).forEach(function (n) {
+        if (n.t === "cond") {
+          var brs = n.branches || [];
+          brs.forEach(function (b, bi) {
+            if (bi === brs.length - 1) return;   // 缺省分支: 无可靠条件文本, 由其它分支的否定约束覆盖
+            var lead = bodyLead(b.body, next);
+            if (lead !== "hit" && lead !== "miss") return;
+            var m = COND_RE.exec(String(b.cond || ""));
+            if (!m) return;
+            var r = addSeed(seeds, m[1], m[2], parseInt(m[3], 10), lead === "hit");
+            if (r === "avoid") {
+              var k = Number(m[1]);
+              (avoid[k] = avoid[k] || {})[parseInt(m[3], 10)] = 1;
+            }
+          });
+        }
+        // 闸门可能藏在选项体/调查点体内(如 #44 审讯答案权): 递归扫描
+        if (n.t === "choice") (n.opts || []).forEach(function (o) { scanItems(o.body, next); });
+        if (n.t === "invest") {
+          (n.points || []).forEach(function (p) { scanItems(p.body, next); });
+          if (n.exit) scanItems(n.exit.body, next);
+          if (n.pre) scanItems(n.pre, next);
+        }
+      });
+    }
+    for (var i = 0; i + 1 < targets.length; i++) {
+      var st = DATA.stories[targets[i]];
+      if (!st) continue;
+      scanItems(st.items, Number(targets[i + 1]));
+    }
+    // 禁值变量: 选一个不踩禁值的最小非负值做种子(粘性种子挡住后续 "=" 赋值)
+    Object.keys(avoid).forEach(function (k) {
+      if (seeds[k]) return;
+      var bad = avoid[k], v = 0;
+      while (bad[v]) v++;
+      seeds[k] = { v: v, fam: "eq" };
+    });
+    var out = {};
+    Object.keys(seeds).forEach(function (k) { out[k] = seeds[k].v; });
+    return out;
+  }
+
+  // ---- 决策记录与 DFS 回溯 ----
+  // 每次尝试记录决策序列 [{key, cands, pick}](key=选择/调查节点对象引用);
+  // 失败后从最深的可换决策回溯: 前缀决策按原样重放, 该决策换成未试过的候选。
+  // guideTried[key] 跨尝试累计已试过的取值, 避免重复探索同一组合。
+  var guideDecisions = [];   // 当前尝试的决策序列
+  var guideCommit = {};      // 回溯时提交的前缀决策 key -> pick
+  var guideFlipKey = null;   // 本轮尝试要换选法的决策点
+  var guideFlipPick = null;
+  var guideTried = {};       // key -> [已试过的 pick..]
+  function guideDecide(key, cands, fallback) {
+    var pick;
+    if (guideFlipKey === key && cands && cands.indexOf(guideFlipPick) >= 0) {
+      pick = guideFlipPick;                                   // 本轮指定要换的决策
+    } else if (guideCommit[key] != null && (!cands || cands.indexOf(guideCommit[key]) >= 0)) {
+      pick = guideCommit[key];                                // 前缀: 按上次原样重放
+    } else {
+      pick = fallback;                                        // 默认启发式
+    }
+    if (!guideTried[key]) guideTried[key] = [];
+    if (guideTried[key].indexOf(pick) < 0) guideTried[key].push(pick);
+    guideDecisions.push({ key: key, cands: cands, pick: pick });
+    return pick;
+  }
+  // 从上一轮失败尝试的决策序列规划回溯: 找最深的有未试候选的决策点
+  function planRetry() {
+    guideCommit = {};
+    guideFlipKey = null;
+    guideFlipPick = null;
+    var ds = guideDecisions;
+    for (var i = ds.length - 1; i >= 0; i--) {
+      var d = ds[i];
+      if (!d.cands || d.cands.length < 2) continue;
+      var tried = guideTried[d.key] || (guideTried[d.key] = []);
+      var nxt = null;
+      for (var j = 0; j < d.cands.length; j++) {
+        if (tried.indexOf(d.cands[j]) < 0) { nxt = d.cands[j]; break; }
+      }
+      if (nxt == null) continue;
+      for (var k = 0; k < i; k++) {
+        if (ds[k].cands) guideCommit[ds[k].key] = ds[k].pick;
+      }
+      guideFlipKey = d.key;
+      guideFlipPick = nxt;
+      return true;
+    }
+    return false;
+  }
+  function guideChoiceIdx(node) {
+    var T = guideTargets[guideIdx] != null ? Number(guideTargets[guideIdx]) : null;
+    var direct = [], deep = [], falls = [];
+    node.opts.forEach(function (o, i) {
+      var r = bodyReach(o.body);
+      if (T != null && r && r.has(T)) { direct.push(i); return; }
+      if (T != null && deepReachOf(o.body).has(T)) { deep.push(i); return; }
+      var ex = bodyReachEx(o.body);
+      if (!ex || ex.falls) falls.push(i);   // 空体/落空: 立即继续本故事主线
+    });
+    var cands = direct.length ? direct : (deep.length ? deep : (falls.length ? falls : null));
+    var fallback = cands ? cands[0] : 0;
+    return guideDecide(node, cands, fallback);
+  }
+  // 调查/问答面板自动决策: 动作编码为 "p<idx>"(访谈该点) / "x"(退出)。
+  // 默认启发式: 目标可经退出体到达且前两次先试退出; 被劝回则依次访谈未访点。
+  // 访谈顺序纳入决策框架(问题1-5 影响 要素之和 等后续条件)。
+  function guideInvestAct(inv) {
+    pendingInvest = inv; pendingChoice = null; pendingBox = null;   // pickInvest 依赖 pendingInvest
+    var T = guideTargets[guideIdx] != null ? Number(guideTargets[guideIdx]) : null;
+    var vm = vmapOf(inv);
+    var tries = guideInvestTried.get(inv) || 0;
+    var exitReach = inv.exit ? bodyReach(inv.exit.body) : null;
+    var cands = [];
+    (inv.points || []).forEach(function (p, i) { if (!vm[i]) cands.push("p" + i); });
+    if (inv.exit) cands.push("x");
+    function fallback() {
+      if (T != null && exitReach && exitReach.has(T) && tries < 2) return "x";
+      for (var i = 0; i < (inv.points || []).length; i++) if (!vm[i]) return "p" + i;
+      return "x";
+    }
+    var act = guideDecide(inv, cands.length > 1 ? cands : (cands.length ? cands : null), fallback());
+    function doExit() { guideInvestTried.set(inv, tries + 1); pickInvest(-1); }
+    if (act === "x") { doExit(); return; }
+    var idx = parseInt(act.slice(1), 10);
+    if (!vm[idx]) pickInvest(idx);
+    else doExit();
+  }
+  function finishGuide(good) {
+    mode = "live";
+    guideTargets = null;
+    persistChain();
+    renderHistory();
+    toast(good ? "已按分支图路径重建来时路线 (" + chain.length + " 步)"
+               : "未能自动重放完整路径, 已从目标剧情直接开始");
+  }
+  // 重试预算耗尽的降级: 放弃路径重建, 从目标剧情直接开新局(旧行为)
+  function guideFallback() {
+    guideTargets = null;
+    chain = [];
+    runStart = startSid;
+    replayAll(startSid, true);
+    finishGuide(false);
+  }
+  // 制导中途进剧终/死路(变量条件暗门): 冻结当前流(转 live), 排队回溯换选法从头再试。
+  // 用代际令牌作废过期重试; 预算耗尽则降级为从目标剧情直接开始。
+  var retryScheduled = false;
+  var guideRun = 0;
+  function guideDerailed() {
+    var canRetry = guideAttempt < GUIDE_MAX_ATTEMPTS - 1 && planRetry();
+    if (DEBUG) {
+      var nMulti = 0;
+      guideDecisions.forEach(function (d) { if (d.cands && d.cands.length > 1) nMulti++; });
+      dbgLog("🤖 制导偏航 @" + curStory + "「" + curStoryName + "」 站点 " +
+        guideIdx + "/" + guideTargets.length + " 决策" + guideDecisions.length +
+        "项(多选" + nMulti + ")" + (canRetry
+          ? " → 排队第 " + (guideAttempt + 2) + " 次尝试"
+          : " → 无可回溯决策, 放弃重建"), "dbg-pick");
+    }
+    if (canRetry) {
+      mode = "live";              // 先冻结, 防止排队期间旧流程继续跑
+      retryScheduled = true;
+      var myRun = guideRun;
+      setTimeout(function () {
+        retryScheduled = false;
+        if (guideRun !== myRun || !guideTargets) return;   // 过期重试
+        retryGuide();
+      }, 0);
+      return true;
+    }
+    guideFallback();
+    return true;
+  }
+  function retryGuide() {
+    guideRun++;
+    guideAttempt++;
+    guideSteps = 0;
+    guideIdx = 0;
+    guideInvestTried.clear();
+    guideDecisions = [];
+    chain = [];
+    if (DEBUG) dbgLog("🤖 路径重放进死路, 第 " + (guideAttempt + 1) + " 次尝试(回溯换选)…", "dbg-pick");
+    replayAll(guideStart, false, true);
+  }
+  // 调试用: 控制台可达制导内部状态
+  window.__QF_GUIDE_DBG = {
+    bodyReach: function (sid) { var st = DATA.stories[sid]; return st ? [...bodyReach(st.items) || []] : null; },
+    deep: function (sid) { return [...storyReachDeep(sid)]; },
+    story: function (sid) { var st = DATA.stories[sid]; return st ? st.items.map(function (n) { return n.t + (n.to != null ? "->" + n.to : ""); }) : null; },
+  };
+
+  function replayAll(startSid, forceLive, asGuide) {
     stopBgm();
     clearFlow();
     resetStage();
     investVisited.clear();
+    guideInvestTried.clear();
+    guideSteps = 0;
     pendingChoice = null;
     pendingInvest = null;
     ended = false;
     vars = {};
     chVarsShown = {};   // 重建/重开时章首变量提示随各章重新渲染
     var resume = chain.length > 0;   // 有选择链: rebuild 重建历史; 无链: 从头直播
-    mode = resume ? "rebuild" : "live";
+    mode = resume ? "rebuild" : (asGuide && !resume ? "guide" : "live");
     if (seedVars && !resume) {
       Object.keys(seedVars).forEach(function (k) {
         vars[k] = seedVars[k];
@@ -1252,6 +1605,24 @@ export function run() {
       startSid = Number(m[1]);
       runStart = startSid;
       chain = [];
+      persistChain();      // 覆盖旧存档: 「从这里开始玩」= 全新开局, 不残留上次记录
+      renderHistory();
+      // ?path=1,32,44,... 分支图路径: 从入口制导重放到目标节点, 来时路线=通往该节点的路径
+      var mp = location.search.match(/[?&]path=(\d+(?:,\d+)*)/);
+      if (mp) {
+        guideTargets = mp[1].split(",").map(Number).filter(function (n) { return DATA.stories[n]; });
+        if (guideTargets.length > 1) {
+          runStart = guideTargets[0];   // 从路径起点(通常是序章)开始重放
+          guideStart = runStart;
+          guideAttempt = 0;
+          guideDecisions = [];
+          guideTried = {};
+          guideCommit = {};
+          guideFlipKey = null;
+        } else {
+          guideTargets = null;
+        }
+      }
       var mv = decodeURIComponent(location.search).match(/[?&]v=([\d:,]+)/);
       if (mv) {
         seedVars = {};
@@ -1261,11 +1632,29 @@ export function run() {
           if (!isNaN(vId) && !isNaN(vVal)) seedVars[vId] = vVal;
         });
       }
-      replayAll(runStart, true);
-      var st = DATA.stories[startSid];
-      if (!CH_RE.test(st.name)) appendTrans(st.name);  // 章标记已由 startStory 挂横幅, 不重复
-      toast("已定位到「" + st.name + "」, 开新局" +
-        (seedVars ? "(已设 " + Object.keys(seedVars).length + " 项初始变量)" : ""));
+      if (guideTargets) {
+        // 路径约束校正: 用引擎剧本重推各站闸门条件, 覆盖图中菱形推导的近似种子
+        var derived = derivePathSeeds(guideTargets);
+        var nFix = 0;
+        Object.keys(derived).forEach(function (k) {
+          var v = Number(derived[k]);
+          if (seedVars[Number(k)] !== v) nFix++;
+          seedVars[Number(k)] = v;
+        });
+        if (DEBUG && nFix) dbgLog("🤖 路径约束校正 " + nFix + " 项变量种子: " +
+          JSON.stringify(derived), "dbg-pick");
+      }
+      var useGuide = !!guideTargets;
+      replayAll(runStart, false, useGuide);
+      if (useGuide) {
+        // guide 同步重放已完成: finishGuide/guideAbort 已给出提示, 这里不再覆盖
+        if (mode === "guide") toast("正在按分支图路径重放…");
+      } else {
+        var st = DATA.stories[startSid];
+        if (!CH_RE.test(st.name)) appendTrans(st.name);  // 章标记已由 startStory 挂横幅, 不重复
+        toast("已定位到「" + st.name + "」, 开新局" +
+          (seedVars ? "(已设 " + Object.keys(seedVars).length + " 项初始变量)" : ""));
+      }
     } else {
       startSid = DATA.entry || 1;
       chain = lsGet(LS_CHAIN, []);

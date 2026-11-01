@@ -429,12 +429,98 @@ function init(data) {
     return q;
   }
 
+  // 图入口到目标节点的路径: BFS 最短路, 节点映射为故事 sid 序列(去连续重复)。
+  // 同时收集路径上条件菱形节点的变量约束 → 初始种子: 条件节点首条出边=成立分支,
+  // 路径走哪支就要求对应取值(如 [022]＝2), play 端粘性种子保证清零不覆盖、
+  // 条件判定按节点状态放行 —— 化解「走到该节点必须满足的变量暗门」。
+  // branches.json 无 utility 字段: 工具转场故事由 /play 端的不可达跳过逻辑自动剔除。
+  function storyPathTo(id) {
+    if (!nodeById[id]) return null;
+    var nodes = data.nodes, edges = data.edges;
+    var start = data.entry != null && nodeById[data.entry] ? data.entry : null;
+    if (start == null) {
+      for (var i = 0; i < nodes.length; i++) {
+        if (Number(nodeSidOf(nodes[i])) === Number(data.entry)) { start = nodes[i].id; break; }
+      }
+    }
+    if (start == null) return null;
+    var adj = {};
+    edges.forEach(function (e) { (adj[e.f] = adj[e.f] || []).push(e.t); });
+    var prev = {}; prev[start] = start;
+    var q = [start];
+    while (q.length) {
+      var cur = q.shift();
+      if (cur === id) break;
+      (adj[cur] || []).forEach(function (nx) {
+        if (!(nx in prev)) { prev[nx] = cur; q.push(nx); }
+      });
+    }
+    if (!(id in prev)) return null;
+    var seq = [], cur = id;
+    while (cur !== start) { seq.unshift(cur); cur = prev[cur]; }
+    seq.unshift(start);
+    var sids = [], last = null;
+    seq.forEach(function (nid) {
+      var n = nodeById[nid];
+      if (!n) return;
+      var sid = Number(nodeSidOf(n));
+      if (sid !== last) { sids.push(sid); last = sid; }
+    });
+    if (sids.length < 2) return null;
+    // 条件约束 → 种子
+    var RE = /\[(\d+)[^\]]*\]\s*(≥|≤|＞|＜|＝|≠)\s*(-?\d+)/;
+    var eqSeeds = {}, boundSeeds = {};
+    for (var k = 0; k < seq.length; k++) {
+      var cn = nodeById[seq[k]];
+      if (!cn || !cn.cond) continue;
+      var m = RE.exec(cn.name || "");
+      if (!m) continue;
+      var outs = adj[seq[k]] || [];
+      var cont = seq[k + 1];
+      var oi = outs.indexOf(cont);
+      if (oi < 0) continue;                       // 路径未沿该条件的出边延续, 放弃此约束
+      var vid = m[1], op = m[2], val0 = parseInt(m[3], 10);
+      var truthy = oi === 0;                      // 首条出边 = 条件成立分支
+      var val = null;
+      if (truthy) {
+        if (op === "＝") val = val0;
+        else if (op === "＜") val = val0 - 1;
+        else if (op === "≤") val = val0;
+        else if (op === "＞") val = val0 + 1;
+        else if (op === "≥") val = val0;
+      } else {
+        if (op === "≠") val = val0;
+        else if (op === "＜") val = val0;          // 不小于 val0
+        else if (op === "≤") val = val0 + 1;
+        else if (op === "＞") val = val0;          // 不大于 val0
+        else if (op === "≥") val = val0 - 1;
+        // 条件不成立的 ＝ 约束无法给出安全取值, 跳过
+      }
+      if (val != null && val >= 0) {
+        if (op === "＝" && truthy) eqSeeds[vid] = val;
+        else boundSeeds[vid] = val;
+      }
+    }
+    var seeds = {};
+    Object.keys(boundSeeds).forEach(function (k2) { seeds[k2] = boundSeeds[k2]; });
+    Object.keys(eqSeeds).forEach(function (k2) { seeds[k2] = eqSeeds[k2]; });   // ＝ 约束优先
+    return { sids: sids, seeds: seeds };
+  }
+
   function buildPlayUrl(id, sel) {
     var raw = nodeById[id];
     var sid = raw.page || raw.story || id;
-    var parts = [];
-    Object.keys(sel || {}).forEach(function (k) { if (sel[k] !== 0) parts.push(k + ":" + sel[k]); });
-    return "/play?s=" + sid + (parts.length ? "&v=" + parts.join(",") : "");
+    var merged = {};
+    Object.keys(sel || {}).forEach(function (k) { if (sel[k] !== 0) merged[k] = sel[k]; });
+    var url = "/play?s=" + sid;
+    var pathRes = storyPathTo(id);
+    if (pathRes) {
+      Object.keys(pathRes.seeds).forEach(function (k) { merged[k] = pathRes.seeds[k]; });   // 路径约束覆盖面板选择
+      url += "&path=" + pathRes.sids.join(",");
+    }
+    var parts = Object.keys(merged).map(function (k) { return k + ":" + merged[k]; });
+    if (parts.length) url += "&v=" + parts.join(",");
+    return url;
   }
 
   // 节拍/合成/条件节点归属小节; 小节收起时折叠到小节节点上
