@@ -34,7 +34,7 @@ onMounted(async () => {
   css.inject();
   document.body.classList.add("page-full");
   try {
-    const url = "/play/js/player.js?v=20261101a"; mod = await import(/* @vite-ignore */ url);
+    const url = "/play/js/player.js?v=20261101b"; mod = await import(/* @vite-ignore */ url);
     await mod.run();
   } catch (e) {
     console.error(e);

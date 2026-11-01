@@ -31,6 +31,7 @@ export function run() {
   var frames = [];          // 执行帧栈 [{items, i, inv?, isSeq?}]
   var chain = [];           // 本局选择链
   var chainIdx = 0;         // 重放游标
+  var chainDone = false;    // 重放时链条已耗尽: 保持快进直到下一个决策点(选项/调查面板)再转 live
   var mode = "live";        // live | rebuild (重建: 瞬时渲染历史, chain 耗尽转 live)
   var waiting = false;      // 停在文本等待点击
   var ended = false;        // 剧终
@@ -183,6 +184,7 @@ export function run() {
         var n = parseInt(input, 10);
         if (isNaN(n)) { toast("未修改: 请输入整数"); return; }
         vars[r.id] = n;
+        recordVarEdit(r.id, n, r.name);   // 持久化: 退回重放时按原位恢复, 条件判定不翻分支
         val.textContent = r.name + " = " + n;
         if (DEBUG) dbgLog("✎ 手动设定 " + r.name + "[" + r.id + "] = " + n, "dbg-pick");
         toast(r.name + " 已设为 " + n);
@@ -565,6 +567,7 @@ export function run() {
           if (DEBUG) dbgAssign(node.expr);
           break;
         case "cond": {
+          drainVarEntries();   // 先套用已到达的变量设定项, 条件判定与原局一致
           var chosen = node.branches[node.branches.length - 1];
           for (var bi = 0; bi < node.branches.length - 1; bi++) {
             if (evalExpr(node.branches[bi].cond)) { chosen = node.branches[bi]; break; }
@@ -611,13 +614,14 @@ export function run() {
           return;
         case "choice": {
           if (mode === "rebuild") {
+            drainVarEntries();
             var e = chain[chainIdx];
             if (e && e.k === "c") {
               chainIdx++;
               var ro = node.opts[e.v] || { body: [], txt: "" };
               appendPicked(ro.txt || "");
               frames.push({ items: ro.body, i: 0 });
-              if (chainIdx >= chain.length) finishReplay();
+              if (chainIdx >= chain.length) chainDone = true;   // 链耗尽: 继续快进到下一决策点
               break;
             }
             finishReplay();   // 链耗尽: 此处就是续玩点
@@ -640,6 +644,7 @@ export function run() {
 
   // 重建/恢复中消费一条调查或问答记录; 返回 false 表示 chain 耗尽(已切换 live 并停在面板)
   function consumeInvestEntry(inv) {
+    drainVarEntries();
     var e = chain[chainIdx];
     if (e && e.k === "p") {
       chainIdx++;
@@ -653,7 +658,7 @@ export function run() {
       } else if (e.v < 0 && inv.exit) {
         frames.push({ items: inv.exit.body, i: 0, inv: inv, isSeq: true });
       }
-      if (chainIdx >= chain.length) finishReplay();
+      if (chainIdx >= chain.length) chainDone = true;   // 链耗尽: 继续快进到下一决策点
       return true;
     }
     finishReplay();
@@ -865,8 +870,27 @@ export function run() {
 
   // ---------------------------------------------------------------- 回退/重开
   var runStart = 1;   // 本局开局故事: 回退重放必须从这里开始(前段 set_var 才能正确恢复)
-  var seedVars = null; // 分支图带来的初始变量(?v=9:8,10:1), 仅新局生效, 回退重建不受影响
+  var seedVars = null; // 分支图带来的初始变量(?v=9:8,10:1), 新局时写入链条(k:"v"), 重放按原位重套
   function persistChain() { lsSet(LS_CHAIN, chain); lsSet(LS_RUNSTART, runStart); }
+
+  // 运行时变量修改持久化: 以 k:"v" 链条项记录。
+  // 否则退回重放时手改值丢失(如 张晓梦已死 2→0), 条件判定翻到另一分支,
+  // 后续链条与节点对不上号, 退回就会落在错误位置。
+  function recordVarEdit(id, val, name) {
+    chain.push({ s: curStory, k: "v", v: id, val: val, t: "设定 " + name + " = " + val });
+    persistChain();
+    renderHistory();
+  }
+
+  // 重放时套用链条中已到达的变量设定项(k:"v"), 保持与原局相同的变量状态
+  function drainVarEntries() {
+    while (chain[chainIdx] && chain[chainIdx].k === "v") {
+      var e = chain[chainIdx++];
+      vars[e.v] = e.val;
+      dbgRenderVars();
+      if (DEBUG) dbgLog("✎ 重放设定 " + varName(e.v) + "[" + e.v + "] = " + e.val, "dbg-pick");
+    }
+  }
 
   function replayAll(startSid, forceLive) {
     stopBgm();
@@ -881,10 +905,19 @@ export function run() {
     var resume = chain.length > 0;   // 有选择链: rebuild 重建历史; 无链: 从头直播
     mode = resume ? "rebuild" : "live";
     if (seedVars && !resume) {
-      Object.keys(seedVars).forEach(function (k) { vars[k] = seedVars[k]; });
+      Object.keys(seedVars).forEach(function (k) {
+        vars[k] = seedVars[k];
+        // 种子写入链条: 回退重放时才能按原位恢复, 条件判定不翻分支
+        chain.push({ s: startSid, k: "v", v: Number(k), val: seedVars[k],
+                     t: "设定 " + varName(Number(k)) + " = " + seedVars[k] });
+      });
+      persistChain();
+      renderHistory();
       appendSeedNote();
     }
     chainIdx = 0;
+    chainDone = false;
+    drainVarEntries();   // 链头可能就有变量设定项(种子/章首改值), 先套用
     waiting = false;
     startStory(startSid);
     step();
@@ -1011,7 +1044,7 @@ export function run() {
         var sname = st ? st.name : ("故事" + e.s);
         var s = document.createElement("span");
         s.className = "h-story";
-        s.textContent = (e.k === "p" ? "🔍 " : "") + sname;
+        s.textContent = (e.k === "p" ? "🔍 " : e.k === "v" ? "✎ " : "") + sname;
         a.appendChild(s);
         a.appendChild(document.createTextNode((e.k === "c" ? "◆ " : "") + e.t));
         a.title = "点击退回到这一步之前";
