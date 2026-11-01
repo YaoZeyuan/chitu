@@ -228,6 +228,18 @@
 .opts.invest .point-visited { opacity: .45; cursor: default; }
 .opts button:disabled { pointer-events: none; }  /* 已做的选择回显: 点击穿透到正文, 不吞推进点击 */
 .opts .opt-end { border-style: dashed; color: var(--muted); }
+/* 数字键快捷角标: 按钮前的编号, 与键盘 1-9/0 对应 */
+.opts .opt-num {
+  font-style: normal;
+  font-size: 11px;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0 5px;
+  margin-right: 8px;
+  vertical-align: 1px;
+  background: var(--accent-soft, rgba(120,110,90,.08));
+}
 
 /* 调查答案展开区: 收纳在选项下方, 不堆进对话流 */
 .invest-answer {
@@ -389,6 +401,30 @@
 #debug-panel .dbg-item.dbg-pick { border-left-color: #b06a14; color: #b06a14; }
 #debug-panel .dbg-item.dbg-wait { border-left-color: #9c9c11; color: #7a7a0d; }
 #debug-panel .dbg-item.dbg-empty { color: var(--muted); }
+
+/* ---- 帮助面板(❓帮助按钮 / H 键) ---- */
+#help-panel {
+  position: fixed;
+  top: 57px; right: 0;
+  width: min(340px, 92vw);
+  max-height: calc(100vh - 70px);
+  overflow-y: auto;
+  background: var(--panel);
+  border-left: 1px solid var(--line);
+  border-top: 1px solid var(--line);
+  box-shadow: -4px 0 14px rgba(50, 40, 20, .10);
+  padding: 12px 14px;
+  z-index: 45;
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: var(--ink);
+}
+#help-panel.hidden { display: none; }
+#help-panel .dbg-head { color: #4a7ec7; }
+#help-panel .help-list { margin: 2px 0 6px; padding-left: 18px; }
+#help-panel .help-list li { margin: 3px 0; }
+#help-panel .help-list b { color: var(--accent); font-weight: 600; }
+#help-panel .dbg-sec { letter-spacing: .5px; }
 
 /* ---- 章首「影响本章的既有变量」提示 ---- */
 #flow .chapter-vars {

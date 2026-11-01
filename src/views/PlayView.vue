@@ -8,6 +8,7 @@
     <button class="btn" id="btn-chapter" title="章节列表 · 从指定章节开始">☰ 章节</button>
     <button class="btn" id="btn-media" title="显示/关闭 立绘背景与音乐">🖼 媒体:开</button>
     <button class="btn" id="btn-history" title="显示/隐藏 来时路线">☰ 路线</button>
+    <button class="btn" id="btn-help" title="玩法说明 (快捷键 H)">❓ 帮助</button>
     <a class="btn" id="btn-branch" href="/branch" target="_blank">分支图</a>
   </header>
   <main id="wrap">
@@ -27,14 +28,14 @@
 import { onMounted, onUnmounted } from "vue";
 import { usePageCss } from "../page-assets";
 
-const css = usePageCss(["/plot/css/style.css?v=20261019c", "/play/css/style.css?v=20261101a"]);
+const css = usePageCss(["/plot/css/style.css?v=20261019c", "/play/css/style.css?v=20261101c"]);
 let mod = null;
 
 onMounted(async () => {
   css.inject();
   document.body.classList.add("page-full");
   try {
-    const url = "/play/js/player.js?v=20261101b"; mod = await import(/* @vite-ignore */ url);
+    const url = "/play/js/player.js?v=20261101c"; mod = await import(/* @vite-ignore */ url);
     await mod.run();
   } catch (e) {
     console.error(e);

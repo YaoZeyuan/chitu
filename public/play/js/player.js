@@ -43,6 +43,7 @@ export function run() {
   var invCur = null;       // 当前展开的调查点 {node, idx, box}
   var DEBUG = false;       // ?debug 参数: 展示决策依据面板(变量取值+判定日志)
   var dbgPanel = null, dbgVarBox = null, dbgLogBox = null;
+  var helpPanel = null;    // ❓帮助按钮打开的玩法说明侧栏
 
   bgmAudio = null;
 
@@ -322,6 +323,59 @@ export function run() {
     dbgPanel.appendChild(dbgLogBox);
     document.body.appendChild(dbgPanel);
     dbgRenderVars();
+  }
+
+  // ---------------------------------------------------------------- 帮助面板
+  // 顶栏「❓ 帮助」打开的玩法说明侧栏: 键盘操作/顶栏功能/章首变量/网址参数
+  function helpInit() {
+    helpPanel = document.createElement("div");
+    helpPanel.id = "help-panel";
+    helpPanel.className = "hidden";
+    var html = ""
+      + "<div class=\"dbg-head\">❓ 玩法说明</div>"
+
+      + "<div class=\"dbg-sec\">⌨ 键盘操作</div>"
+      + "<ul class=\"help-list\">"
+      + "<li><b>空格 / 回车</b> — 推进对话（不用狂点鼠标）</li>"
+      + "<li><b>数字键 1-9</b> — 选择第 N 个选项 / 调查点（按钮前有角标）</li>"
+      + "<li><b>0</b> — 结束调查 / 离开问答面板</li>"
+      + "<li><b>←</b> — 退回上一个选择</li>"
+      + "<li><b>H</b> — 开关本帮助</li>"
+      + "</ul>"
+
+      + "<div class=\"dbg-sec\">🖥 顶栏功能</div>"
+      + "<ul class=\"help-list\">"
+      + "<li><b>↩ 退回</b> — 撤销上一个选择，回到它之前重放</li>"
+      + "<li><b>↩ 关键抉择</b> — 直接跳回最近的重大分歧点</li>"
+      + "<li><b>⟲ 重开</b> — 清空本局，从头开始</li>"
+      + "<li><b>☰ 章节</b> — 从任意章节开新局（不带之前章节数值）</li>"
+      + "<li><b>🖼 媒体</b> — 开关立绘 / 背景 / 音乐；重新打开会自动恢复</li>"
+      + "<li><b>☰ 路线</b> — 来时路线；点击任意一步可退回到那里</li>"
+      + "<li><b>分支图</b> — 新标签打开剧情分支图，当前节点会高亮</li>"
+      + "</ul>"
+
+      + "<div class=\"dbg-sec\">⚑ 章首变量提示</div>"
+      + "<ul class=\"help-list\">"
+      + "<li>每章开始前会列出<b>「影响本章的既有变量」</b>和各分支走向说明</li>"
+      + "<li><b>点击数值可当场修改</b>——某些隐藏线靠之前章节的取值解锁（如第五章「张晓梦已死＝2」才能进安四贤家），卡关时在此调整即可</li>"
+      + "</ul>"
+
+      + "<div class=\"dbg-sec\">🔗 网址参数</div>"
+      + "<ul class=\"help-list\">"
+      + "<li><b>?s=剧情编号</b> — 从指定剧情开始，如 /play/?s=52</li>"
+      + "<li><b>?v=变量编号:值</b> — 预设变量种子，多个用逗号分隔，如 /play/?s=55&amp;v=22:2</li>"
+      + "<li><b>?debug=1</b> — 打开右侧决策面板：实时变量取值 + 每次条件判定命中了哪个分支</li>"
+      + "<li>分支图 <b>/branch?s=节点编号&amp;expand=all</b> — 定位到指定节点并全部展开</li>"
+      + "</ul>"
+
+      + "<div class=\"dbg-sec\">💡 小技巧</div>"
+      + "<ul class=\"help-list\">"
+      + "<li>顶栏链接都在<b>新标签页</b>打开，当前进度不会丢失</li>"
+      + "<li>调查面板里已选过的点会打 ✓ 并把答案展开在下方，重复进入面板不会堆积</li>"
+      + "<li>退回后会自动快进到下一个决策点才停下</li>"
+      + "</ul>";
+    helpPanel.innerHTML = html;
+    document.body.appendChild(helpPanel);
   }
   function dbgRenderVars() {
     if (!dbgVarBox) return;
@@ -697,8 +751,8 @@ export function run() {
     pendingBox = box;
     node.opts.forEach(function (o, idx) {
       var b = document.createElement("button");
-      b.innerHTML = esc(o.txt);
-      if (KEY_ANCHORS[o.a]) b.innerHTML = esc(o.txt);  // 关键抉择不再加 ★ 前缀(无意义装饰)
+      b.innerHTML = "<i class=\"opt-num\">" + (idx + 1) + "</i>" + esc(o.txt);  // 角标 = 数字键快捷选择
+      b.title = "按数字键 " + (idx + 1) + " 也可选择";
       b.addEventListener("click", function (ev) {
         ev.stopPropagation();
         pickChoice(idx);
@@ -754,7 +808,8 @@ export function run() {
       var vm = vmapOf(node);
       var b = document.createElement("button");
       b.dataset.idx = idx;
-      b.innerHTML = (vm[idx] ? "✓ " : "") + esc(p.name);
+      b.innerHTML = "<i class=\"opt-num\">" + (idx + 1) + "</i>" + (vm[idx] ? "✓ " : "") + esc(p.name);
+      if (!vm[idx]) b.title = "按数字键 " + (idx + 1) + " 也可选择";
       if (vm[idx]) { b.className = "point-visited"; b.disabled = true; }  // 已调查过: 禁止重复
       else {
         b.addEventListener("click", function (ev) {
@@ -774,10 +829,11 @@ export function run() {
     var endBtn = document.createElement("button");
     endBtn.className = "opt-end";
     if (node.exit) {
-      endBtn.innerHTML = "✦ " + esc(node.exit.name);
-      endBtn.title = "问完所有问题后才可离开, 否则会被劝回";
+      endBtn.innerHTML = "<i class=\"opt-num\">0</i>" + "✦ " + esc(node.exit.name);
+      endBtn.title = "问完所有问题后才可离开, 否则会被劝回 (按 0 键也可)";
     } else {
-      endBtn.textContent = "结束调查 →";
+      endBtn.innerHTML = "<i class=\"opt-num\">0</i>结束调查 →";
+      endBtn.title = "按 0 键也可结束调查";
     }
     endBtn.addEventListener("click", function (ev) {
       ev.stopPropagation();
@@ -1072,14 +1128,34 @@ export function run() {
     }
   }
 
+  // 当前停靠区里可选中的按钮(选项/调查点, 不含结束项), 用于数字键快捷选择
+  function activeOptButtons() {
+    var box = pendingBox;
+    if (!box || !box.isConnected) return [];
+    return Array.prototype.slice.call(box.querySelectorAll("button:not([disabled])"))
+      .filter(function (b) { return !b.classList.contains("opt-end"); });
+  }
+
   docKeyHandler = function (ev) {
     if (ev.target && /INPUT|TEXTAREA|SELECT/.test(ev.target.tagName)) return;
     if (ev.key === " " || ev.key === "Enter") {
       ev.preventDefault();
-      advance();
+      if (waiting) advance();      // 空格/回车 = 推进对话; 等待选项时不自动选, 用数字键
     } else if (ev.key === "ArrowLeft") {
       ev.preventDefault();
       back(1);
+    } else if (/^[0-9]$/.test(ev.key)) {
+      var n = Number(ev.key);
+      if (n === 0) {
+        // 0 = 调查/问答面板的结束项
+        var end = pendingBox && pendingBox.querySelector("button.opt-end:not([disabled])");
+        if (end) end.click();
+      } else {
+        var btns = activeOptButtons();
+        if (btns[n - 1]) btns[n - 1].click();
+      }
+    } else if (ev.key === "h" || ev.key === "H" || ev.key === "?" || ev.key === "/") {
+      if (helpPanel) { helpPanel.classList.toggle("hidden"); }
     }
   };
   document.addEventListener("keydown", docKeyHandler);
@@ -1119,6 +1195,11 @@ export function run() {
     $("btn-history").addEventListener("click", function () {
       histEl.classList.toggle("hidden");
       this.classList.toggle("active");
+    });
+    // ❓ 帮助: 打开玩法说明侧栏(键盘操作/顶栏功能/章首变量/网址参数)
+    helpInit();
+    $("btn-help").addEventListener("click", function () {
+      helpPanel.classList.toggle("hidden");
     });
     var mediaBtn = $("btn-media");
     function paintMedia() {
