@@ -294,8 +294,9 @@ function init(data) {
     var off = pn > 1 ? (pi - (pn - 1) / 2) * 14 : 0;
     m.style = {
       stroke: BLUE, lineWidth: 2, radius: 16, offset: off,
-      // G6.Arrow.triangle 是函数, 须传路径串, 直接传函数会导致 Path 构造崩溃
-      endArrow: { path: "M 0,0 L 12,6 L 0,12 Z", fill: BLUE },
+      // 自定义箭头 path 约定(@antv/g-canvas): 尖端须在 (0,0), 底边在 +x 侧,
+      // g-canvas 会按「终点→前一段」的反向角旋转, 尖端落在路径终点指向前方
+      endArrow: { path: "M 12,0 L 0,6 L 12,12 Z", fill: BLUE },
     };
     if (e.l) m.label = e.l.length > 14 ? e.l.slice(0, 13) + "…" : e.l;
     m.labelCfg = {
@@ -308,14 +309,14 @@ function init(data) {
     if (cross) {
       // 跨章节跳转: 绿色, 保留平行边 offset
       m.style.stroke = GREEN;
-      m.style.endArrow = { path: "M 0,0 L 12,6 L 0,12 Z", fill: GREEN };
+      m.style.endArrow = { path: "M 12,0 L 0,6 L 12,12 Z", fill: GREEN };
       m.labelCfg.style.fill = "#1b5e20";
       m.labelCfg.style.background = { fill: "#e8f5e9", padding: [3, 6, 3, 6], radius: 4 };
     }
     if (footOn && !(footLit(e.f) && footLit(e.t))) {
       // 足迹模式: 未走过的边褪色
       m.style.stroke = "#ddd6c8";
-      m.style.endArrow = { path: "M 0,0 L 12,6 L 0,12 Z", fill: "#ddd6c8" };
+      m.style.endArrow = { path: "M 12,0 L 0,6 L 12,12 Z", fill: "#ddd6c8" };
       m.labelCfg.style.fill = "#b8b2a2";
       if (m.labelCfg.style.background) m.labelCfg.style.background.fill = "#f5f2ec";
     }
@@ -862,6 +863,35 @@ function init(data) {
 
   var pendingFocus = null;
 
+  // G6 v4 polyline 边在「平行边 offset + 共线路径」下生成的点序会回折越过端点
+  // (如 M542.5→L535.5→L847.5→L840.5), endArrow 按最后一段方向旋转后会指向反方向。
+  // 共线路径上中间点本无意义, 收敛为首尾两点即可同时修好形状与箭头朝向。
+  var straightenPending = false;
+  function straightenEdgePaths() {
+    if (!graph || straightenPending) return;
+    straightenPending = true;
+    requestAnimationFrame(function () {
+      straightenPending = false;
+      if (!graph || graph.get("destroyed")) return;
+      graph.getEdges().forEach(function (e) {
+        var shape = e.getKeyShape();
+        var segs = shape.attr("path");
+        if (!segs || segs.length < 3) return;
+        var p0 = segs[0], pn = segs[segs.length - 1];
+        if (p0[0] !== "M" || pn[0] !== "L") return;
+        var x0 = p0[1], y0 = p0[2], x1 = pn[1], y1 = pn[2];
+        var vertical = Math.abs(x1 - x0) < 0.01, horizontal = Math.abs(y1 - y0) < 0.01;
+        if (!vertical && !horizontal) return;   // 非共线(带圆角/拐点)的路径不动
+        for (var i = 1; i < segs.length - 1; i++) {
+          var s = segs[i];
+          if (s[0] !== "L" || (vertical ? Math.abs(s[1] - x0) > 0.01 : Math.abs(s[2] - y0) > 0.01)) return;
+        }
+        shape.attr("path", [["M", x0, y0], ["L", x1, y1]]);
+      });
+    });
+  }
+
+
   // 章节树起始节点: 该树内无同树入边的节点(优先章节标题节点本身)
   function treeStart(tree) {
     if (tree === "all" || tree == null) return null;
@@ -921,7 +951,7 @@ function init(data) {
         style: {
           stroke: BLUE, lineWidth: 2, radius: 16,
           // G6.Arrow.triangle 是函数, 须传路径串, 直接传函数会导致 Path 构造崩溃
-          endArrow: { path: "M 0,0 L 12,6 L 0,12 Z", fill: BLUE },
+          endArrow: { path: "M 12,0 L 0,6 L 12,12 Z", fill: BLUE },
         },
         labelCfg: {
           autoRotate: true,
@@ -991,6 +1021,9 @@ function init(data) {
       openPanel(nid);
     });
     graph.on("canvas:click", clearSelect);
+    // 拖拽节点时边路径会实时重算, 坏点序会回来, 挂帧级修复
+    graph.on("afterupdateitem", straightenEdgePaths);
+    graph.on("afterrender", straightenEdgePaths);
 
     // 缩放工具按钮(可能不存在, 防御)
     var zin = document.getElementById("zin");
